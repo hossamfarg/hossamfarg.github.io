@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Internet Health Monitor – Probe</title>
+  <title>exist – Probe</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -52,7 +52,7 @@
 
     /* Canvas */
     .canvas-wrap { position: relative; }
-    #historyCanvas { width: 100%; height: 320px; display: block; }
+    #historyCanvas { width: 100%; height: 340px; display: block; }
 
     /* Tooltip */
     .tooltip {
@@ -70,7 +70,7 @@
   <div class="page">
     <header>
       <div class="title">
-        <div>Internet Health Monitor</div>
+        <div>exist</div>
         <div class="hint">· Probing: <span id="probeUrlLabel">https://www.yahoo.com/favicon.ico</span></div>
       </div>
       <div id="statusBadge" class="status-badge badge-down">
@@ -79,7 +79,7 @@
       </div>
     </header>
 
-    <!-- URL & Limits -->
+    <!-- URL & Limits & Windows -->
     <section class="card">
       <div class="row" style="gap:8px 12px;">
         <label for="urlInput">Probe URL:</label>
@@ -92,16 +92,24 @@
         <input id="maxIntervalInput" type="number" min="1" step="1" value="30" />
         <button id="applyLimitsBtn" title="Apply new cadence limits">Apply limits</button>
 
+        <label for="timeoutInput">Timeout (s):</label>
+        <input id="timeoutInput" type="number" min="0.1" step="0.1" value="2" />
+        <label for="historyHoursInput">History window (hours):</label>
+        <input id="historyHoursInput" type="number" min="0.1" step="0.1" value="2" />
+        <label for="statusMinutesInput">Status window (minutes):</label>
+        <input id="statusMinutesInput" type="number" min="1" step="1" value="5" />
+        <button id="applyWindowsBtn" title="Apply timeout & windows">Apply settings</button>
+
         <div class="pill">Current interval: <strong id="intervalText">–</strong></div>
         <div class="pill">Last test: <strong id="lastTestText">–</strong></div>
-        <div class="pill">5‑min success: <strong id="fiveMinSuccess">–</strong></div>
+        <div class="pill"><span id="statusWindowLabel">5‑min</span> success: <strong id="fiveMinSuccess">–</strong></div>
         <button id="testNowBtn" title="Run a test immediately">Test now</button>
-        <button id="clearBtn" title="Clear stored history (last two hours)">Clear history</button>
+        <button id="clearBtn" title="Clear stored history (last window)">Clear history</button>
       </div>
       <div class="divider"></div>
       <div class="grid">
         <div>
-          <div class="hint">Overall (last 5 minutes)</div>
+          <div class="hint">Overall (<span id="overallWindowLabel">last 5 minutes</span>)</div>
           <div class="big" id="overallLabel">Calculating…</div>
           <div class="hint" id="adviceText"></div>
         </div>
@@ -109,9 +117,9 @@
           <div class="hint">Notes</div>
           <ul class="hint" style="margin-top:6px;">
             <li>Adaptive cadence (configurable bounds): <strong id="notesMin">10s</strong> min, <strong id="notesMax">30s</strong> max.</li>
-            <li>More often on failures (shorter interval), less often on successes (longer interval).</li>
-            <li>A probe <strong>fails</strong> if no response within <strong>2 seconds</strong>.</li>
-            <li>Your selected URL and limits persist locally.</li>
+            <li>Timeout: <strong id="notesTimeout">2s</strong> (latency ≥ timeout counts as failure/slow; points colored red).</li>
+            <li>History window: <strong id="notesHistory">2 hours</strong> (rolling). Status window: <strong id="notesStatus">5 minutes</strong>.</li>
+            <li>Use public endpoints. <code>http://www.gstatic.com/generate_204</code> is supported.</li>
           </ul>
         </div>
       </div>
@@ -119,12 +127,14 @@
 
     <section class="card">
       <div class="row">
-        <div class="pill">History (last 2 hours)</div>
+        <div class="pill">Latency (ms) over <span id="historyWindowLabel">last 2 hours</span></div>
       </div>
       <div class="canvas-wrap">
         <canvas id="historyCanvas"></canvas>
       </div>
-      <div class="hint" style="margin-top:6px;">Hover the chart to see a tooltip with timestamp and duration.</div>
+      <div class="hint" style="margin-top:6px;">
+        Hover the chart to see a tooltip with timestamp and duration. Green = under timeout; Red = timeout or slower.
+      </div>
     </section>
   </div>
 
@@ -170,16 +180,16 @@
       time: (label) => { if (NET) console.time?.(label); },
       timeEnd: (label) => { if (NET) console.timeEnd?.(label); },
     };
-    LOG.info(`Booting Internet Health Monitor (level=${LOG_LEVEL}, trace=${TRACE}, net=${NET})`);
+    LOG.info(`Booting exist (level=${LOG_LEVEL}, trace=${TRACE}, net=${NET})`);
 
     // ------------------ Config (defaults) ------------------
     const DEFAULT_PROBE_URL = "https://www.yahoo.com/favicon.ico";
     const DEFAULT_MIN_SEC = 10;
     const DEFAULT_MAX_SEC = 30;
+    const DEFAULT_TIMEOUT_SEC = 2;
+    const DEFAULT_HISTORY_HOURS = 2;
+    const DEFAULT_STATUS_MINUTES = 5;
 
-    const PROBE_TIMEOUT_MS = 2000;          // Fail if no response within 2s
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-    const FIVE_MIN_MS = 5 * 60 * 1000;
     const STORAGE_KEY = "internetMonitorHistoryV1";
     const SETTINGS_KEY = "internetMonitorSettingsV1";
     const STATUS_THRESHOLDS = { healthy: 0.90, unstable: 0.60 };
@@ -189,14 +199,17 @@
     let lastRunAt = 0;
     let history = loadHistory();
 
-    // Settings (probe URL + limits)
+    // Settings (probe URL + limits + timeout + windows)
     let settings = loadSettings();
     let probeUrl = settings?.probeUrl || DEFAULT_PROBE_URL;
     let minIntervalMs = settings?.minIntervalMs ?? DEFAULT_MIN_SEC * 1000;
     let maxIntervalMs = settings?.maxIntervalMs ?? DEFAULT_MAX_SEC * 1000;
+    let timeoutMs     = settings?.timeoutMs     ?? DEFAULT_TIMEOUT_SEC * 1000;
+    let historyWindowMs = settings?.historyWindowMs ?? DEFAULT_HISTORY_HOURS * 3600 * 1000;
+    let statusWindowMs  = settings?.statusWindowMs  ?? DEFAULT_STATUS_MINUTES * 60 * 1000;
 
-    // Start interval: midpoint clamped to current limits
-    let currentInterval = clamp(Math.round(((minIntervalMs + maxIntervalMs) / 2)), minIntervalMs, maxIntervalMs);
+    // Start interval at midpoint within bounds
+    let currentInterval = clamp(Math.round((minIntervalMs + maxIntervalMs) / 2), minIntervalMs, maxIntervalMs);
 
     // ------------------ DOM ------------------
     const intervalText = document.getElementById("intervalText");
@@ -217,21 +230,47 @@
     const minIntervalInput = document.getElementById("minIntervalInput");
     const maxIntervalInput = document.getElementById("maxIntervalInput");
     const applyLimitsBtn = document.getElementById("applyLimitsBtn");
+    const timeoutInput = document.getElementById("timeoutInput");
+    const historyHoursInput = document.getElementById("historyHoursInput");
+    const statusMinutesInput = document.getElementById("statusMinutesInput");
+    const applyWindowsBtn = document.getElementById("applyWindowsBtn");
     const notesMin = document.getElementById("notesMin");
     const notesMax = document.getElementById("notesMax");
+    const notesTimeout = document.getElementById("notesTimeout");
+    const notesHistory = document.getElementById("notesHistory");
+    const notesStatus = document.getElementById("notesStatus");
+    const statusWindowLabel = document.getElementById("statusWindowLabel");
+    const overallWindowLabel = document.getElementById("overallWindowLabel");
+    const historyWindowLabel = document.getElementById("historyWindowLabel");
     const ctx = historyCanvas.getContext("2d");
 
-    // Initialize header label & inputs
+    // Initialize labels & inputs
     probeUrlLabel.textContent = probeUrl;
     urlInput.value = probeUrl;
-    minIntervalInput.value = Math.round(minIntervalMs / 1000);
-    maxIntervalInput.value = Math.round(maxIntervalMs / 1000);
-    notesMin.textContent = `${Math.round(minIntervalMs / 1000)}s`;
-    notesMax.textContent = `${Math.round(maxIntervalMs / 1000)}s`;
+    minIntervalInput.value   = Math.round(minIntervalMs / 1000);
+    maxIntervalInput.value   = Math.round(maxIntervalMs / 1000);
+    timeoutInput.value       = +(timeoutMs / 1000).toFixed(1);
+    historyHoursInput.value  = +(historyWindowMs / 3600000).toFixed(1);
+    statusMinutesInput.value = Math.round(statusWindowMs / 60000);
+
+    refreshNotesAndWindowLabels();
 
     // ------------------ Utilities ------------------
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
     function msToHuman(ms) { return Math.round(ms / 1000) + "s"; }
+    function humanizeWindow(ms) {
+      if (ms >= 3600000) {
+        const h = (ms / 3600000);
+        return (h % 1 === 0 ? h.toFixed(0) : h.toFixed(1)) + " hours";
+      } else {
+        return Math.round(ms / 60000) + " minutes";
+      }
+    }
+    function humanizeShort(ms) {
+      if (ms >= 3600000) return (ms/3600000).toFixed(1) + " h";
+      if (ms >= 60000) return Math.round(ms/60000) + " min";
+      return Math.round(ms/1000) + " s";
+    }
     function formatTime(ts) {
       const d = new Date(ts);
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -266,18 +305,32 @@
         localStorage.setItem(SETTINGS_KEY, JSON.stringify({
           probeUrl,
           minIntervalMs,
-          maxIntervalMs
+          maxIntervalMs,
+          timeoutMs,
+          historyWindowMs,
+          statusWindowMs
         }));
       } catch (e) {
         LOG.error("Failed to save settings", e);
       }
     }
     function trimHistory(now = Date.now()) {
+      const cutoff = now - historyWindowMs;
       const before = history.length;
-      const cutoff = now - TWO_HOURS_MS;
       history = history.filter(p => p.t >= cutoff);
       const removed = before - history.length;
       if (removed > 0) LOG.debug(`Trimmed ${removed} points older than ${new Date(cutoff).toISOString()}`);
+    }
+
+    function refreshNotesAndWindowLabels() {
+      notesMin.textContent = `${Math.round(minIntervalMs/1000)}s`;
+      notesMax.textContent = `${Math.round(maxIntervalMs/1000)}s`;
+      notesTimeout.textContent = `${+(timeoutMs/1000).toFixed(1)}s`;
+      notesHistory.textContent = humanizeWindow(historyWindowMs);
+      notesStatus.textContent = humanizeWindow(statusWindowMs);
+      statusWindowLabel.textContent = humanizeShort(statusWindowMs);
+      overallWindowLabel.textContent = `last ${humanizeWindow(statusWindowMs)}`;
+      historyWindowLabel.textContent = `last ${humanizeWindow(historyWindowMs)}`;
     }
 
     // Normalize user input into a usable URL
@@ -303,8 +356,8 @@
       saveSettings();
       LOG.info("Probe URL updated", { probeUrl });
 
-      // Reset cadence to midpoint within new bounds
-      currentInterval = clamp(Math.round(((minIntervalMs + maxIntervalMs) / 2)), minIntervalMs, maxIntervalMs);
+      // Reset cadence to midpoint within current bounds
+      currentInterval = clamp(Math.round((minIntervalMs + maxIntervalMs)/2), minIntervalMs, maxIntervalMs);
       clearTimeout(timerId);
       scheduleNext(0, "url-change");
       return true;
@@ -327,37 +380,66 @@
 
       minIntervalMs = Math.round(minSec * 1000);
       maxIntervalMs = Math.round(maxSec * 1000);
-      notesMin.textContent = `${minSec}s`;
-      notesMax.textContent = `${maxSec}s`;
 
       // Clamp current interval to new bounds
       const before = currentInterval;
       currentInterval = clamp(currentInterval, minIntervalMs, maxIntervalMs);
       LOG.info(`Limits applied: min=${minIntervalMs}ms, max=${maxIntervalMs}ms; interval clamped ${before}→${currentInterval}`);
       saveSettings();
+      refreshNotesAndWindowLabels();
 
       clearTimeout(timerId);
       scheduleNext(0, "limits-change");
       return true;
     }
 
-    // ------------------ Probe (fetch + 2s timeout, no-cors) ------------------
+    function applyWindows() {
+      const tSec = Number(timeoutInput.value);
+      const hHours = Number(historyHoursInput.value);
+      const sMin = Number(statusMinutesInput.value);
+
+      if (!Number.isFinite(tSec) || tSec <= 0) {
+        alert("Timeout must be a positive number (seconds).");
+        return false;
+      }
+      if (!Number.isFinite(hHours) || hHours <= 0) {
+        alert("History window must be a positive number (hours).");
+        return false;
+      }
+      if (!Number.isFinite(sMin) || sMin <= 0) {
+        alert("Status window must be a positive number (minutes).");
+        return false;
+      }
+
+      timeoutMs = Math.round(tSec * 1000);
+      historyWindowMs = Math.round(hHours * 3600000);
+      statusWindowMs = Math.round(sMin * 60000);
+
+      saveSettings();
+      refreshNotesAndWindowLabels();
+
+      // Trim & redraw with new window, reschedule
+      clearTimeout(timerId);
+      updateUI();
+      scheduleNext(0, "windows-change");
+      return true;
+    }
+
+    // ------------------ Probe (fetch + timeout, no-cors) ------------------
     async function probeOnce() {
       LOG.group("probeOnce()");
       const label = "probeOnce-duration";
       const start = performance.now();
 
       const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+      const to = setTimeout(() => controller.abort(), timeoutMs);
 
-      // Cache-bust
       const src = probeUrl + (probeUrl.includes("?") ? "&" : "?") + "_=" + Date.now();
 
       try {
         if (NET) LOG.time(label);
-        LOG.debug("Starting fetch probe", { url: src, timeoutMs: PROBE_TIMEOUT_MS });
+        LOG.debug("Starting fetch probe", { url: src, timeoutMs });
 
-        // Cross-origin: mode 'no-cors' gives opaque response; resolution indicates reachability.
         await fetch(src, { mode: "no-cors", signal: controller.signal });
 
         const duration = performance.now() - start;
@@ -396,9 +478,9 @@
       LOG.info(`Cadence ${ok ? "backoff" : "tighten"}: ${before} → ${currentInterval} ms (bounds ${minIntervalMs}..${maxIntervalMs})`);
     }
 
-    // ------------------ Status (last 5 minutes) ------------------
-    function getLast5MinStats(now = Date.now()) {
-      const cutoff = now - FIVE_MIN_MS;
+    // ------------------ Status (windowed) ------------------
+    function getWindowStats(now = Date.now()) {
+      const cutoff = now - statusWindowMs;
       const windowData = history.filter(p => p.t >= cutoff);
       const n = windowData.length;
       const succ = windowData.reduce((a, p) => a + (p.ok ? 1 : 0), 0);
@@ -406,21 +488,21 @@
       let label = "Down", badgeClass = "badge-down", tip = "Frequent failures detected. Check cabling/ISP/router/DNS.";
       if (rate >= STATUS_THRESHOLDS.healthy) { label = "Healthy"; badgeClass = "badge-healthy"; tip = "Connectivity looks solid."; }
       else if (rate >= STATUS_THRESHOLDS.unstable) { label = "Unstable"; badgeClass = "badge-unstable"; tip = "Intermittent issues observed. Monitor closely."; }
-      LOG.debug(`5-min stats: n=${n}, succ=${succ}, rate=${(rate*100).toFixed(1)}%, label=${label}`);
+      LOG.debug(`Status window stats: n=${n}, succ=${succ}, rate=${(rate*100).toFixed(1)}%, label=${label}`);
       return { n, succ, rate, label, badgeClass, tip };
     }
 
-    // ------------------ Canvas Chart (no external libs) ------------------
+    // ------------------ Canvas Chart: latency (ms), threshold-colored ------------------
     function drawHistoryChart() {
       const wCss = historyCanvas.clientWidth || 800;
-      const hCss = historyCanvas.clientHeight || 320;
+      const hCss = historyCanvas.clientHeight || 340;
       const dpr = window.devicePixelRatio || 1;
       historyCanvas.width = Math.max(1, Math.floor(wCss * dpr));
       historyCanvas.height = Math.max(1, Math.floor(hCss * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const w = wCss, h = hCss;
-      const padLeft = 56, padRight = 20, padTop = 20, padBottom = 30;
+      const padLeft = 56, padRight = 20, padTop = 20, padBottom = 36;
       const plotW = w - padLeft - padRight;
       const plotH = h - padTop - padBottom;
 
@@ -429,69 +511,90 @@
       const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim() || '#1f2a44';
       const textColor = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#a7b3cc';
 
-      // Y grid at 1 and 0
-      ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padLeft, padTop); ctx.lineTo(padLeft + plotW, padTop);
-      ctx.moveTo(padLeft, padTop + plotH); ctx.lineTo(padLeft + plotW, padTop + plotH);
-      ctx.stroke();
-
-      // X grid every 10 minutes
+      // Time window
       const now = Date.now();
-      const startTs = now - TWO_HOURS_MS;
-      for (let m = 0; m <= 120; m += 10) {
-        const ts = startTs + m * 60 * 1000;
-        const x = padLeft + ((ts - startTs) / TWO_HOURS_MS) * plotW;
+      const startTs = now - historyWindowMs;
+
+      // Determine y-range from data and timeout
+      let maxLatency = timeoutMs;
+      for (const p of history) {
+        if (p.t < startTs) continue;
+        if (p.t > now) break;
+        maxLatency = Math.max(maxLatency, p.dt || 0);
+      }
+      // Pad top 15% for headroom
+      const yMax = Math.max(100, Math.ceil(maxLatency * 1.15));
+      const yMin = 0;
+
+      // Grid: horizontal ms lines (4 ticks)
+      ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+      const yTicks = 4;
+      ctx.fillStyle = textColor; ctx.font = '12px system-ui';
+      for (let i = 0; i <= yTicks; i++) {
+        const v = yMin + (i * (yMax - yMin) / yTicks);
+        const y = padTop + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+        ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(padLeft + plotW, y); ctx.stroke();
+        ctx.fillText(`${Math.round(v)} ms`, 4, y + 4);
+      }
+
+      // Timeout threshold line
+      const yThresh = padTop + (1 - (timeoutMs - yMin) / (yMax - yMin)) * plotH;
+      ctx.strokeStyle = 'rgba(255, 183, 3, 0.75)'; // amber
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(padLeft, yThresh); ctx.lineTo(padLeft + plotW, yThresh); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = textColor; ctx.fillText(`timeout (${Math.round(timeoutMs)} ms)`, padLeft + 6, yThresh - 6);
+
+      // X grid: choose a reasonable step based on window size
+      const mins = historyWindowMs / 60000;
+      let stepMin = 10;
+      if (mins <= 15) stepMin = 2;
+      else if (mins <= 30) stepMin = 5;
+      else if (mins <= 60) stepMin = 10;
+      else if (mins <= 120) stepMin = 10;
+      else stepMin = 30;
+
+      for (let m = 0; m <= Math.ceil(mins); m += stepMin) {
+        const ts = startTs + m * 60000;
+        const x = padLeft + ((ts - startTs) / historyWindowMs) * plotW;
+        ctx.strokeStyle = gridColor;
         ctx.beginPath(); ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + plotH); ctx.stroke();
-        ctx.fillStyle = textColor; ctx.font = '12px system-ui';
+        ctx.fillStyle = textColor;
         const timeStr = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         ctx.fillText(timeStr, x - 18, padTop + plotH + 18);
       }
 
-      // Y labels
-      ctx.fillStyle = textColor; ctx.font = '12px system-ui';
-      ctx.fillText('Success', 6, padTop + 12);
-      ctx.fillText('Failure', 6, padTop + plotH);
+      const xForTs = (ts) => padLeft + ((ts - startTs) / historyWindowMs) * plotW;
+      const yForMs = (ms) => padTop + (1 - (ms - yMin) / (yMax - yMin)) * plotH;
 
-      const xForTs = (ts) => padLeft + ((ts - startTs) / TWO_HOURS_MS) * plotW;
-      const yForVal = (v) => padTop + (1 - v) * plotH;
-
-      // Stepped line + markers
+      // Draw line segments colored by threshold, and markers per point
       ctx.lineWidth = 2;
-      let lastVal = null, lastX = null;
+      let prevX = null, prevY = null, prevGood = null;
       for (let i = 0; i < history.length; i++) {
         const p = history[i];
+        if (p.t < startTs) continue;
         const x = xForTs(p.t);
-        const y = yForVal(p.ok ? 1 : 0);
         if (x < padLeft) continue;
         if (x > padLeft + plotW) break;
 
-        if (lastVal !== null) {
-          ctx.strokeStyle = lastVal ? '#21c16b' : '#ff5d5d';
-          ctx.beginPath();
-          ctx.moveTo(lastX, yForVal(lastVal ? 1 : 0));
-          ctx.lineTo(x, yForVal(lastVal ? 1 : 0));
-          ctx.stroke();
+        const ms = Math.max(0, p.dt || 0);
+        const y = yForMs(ms);
+        const good = p.ok && ms < timeoutMs;
 
-          if ((p.ok ? 1 : 0) !== (lastVal ? 1 : 0)) {
-            ctx.strokeStyle = p.ok ? '#21c16b' : '#ff5d5d';
-            ctx.beginPath();
-            ctx.moveTo(x, yForVal(lastVal ? 1 : 0));
-            ctx.lineTo(x, y);
-            ctx.stroke();
-          }
-        } else {
-          ctx.strokeStyle = p.ok ? '#21c16b' : '#ff5d5d';
+        // Segment from prev to current, colored by current point's state
+        if (prevX !== null && prevY !== null) {
+          ctx.strokeStyle = good ? '#21c16b' : '#ff5d5d';
           ctx.beginPath();
-          ctx.moveTo(padLeft, y);
+          ctx.moveTo(prevX, prevY);
           ctx.lineTo(x, y);
           ctx.stroke();
         }
 
-        ctx.fillStyle = p.ok ? '#21c16b' : '#ff5d5d';
-        ctx.beginPath(); ctx.arc(x, y, 2.4, 0, Math.PI * 2); ctx.fill();
+        // Marker
+        ctx.fillStyle = good ? '#21c16b' : '#ff5d5d';
+        ctx.beginPath(); ctx.arc(x, y, 2.8, 0, Math.PI * 2); ctx.fill();
 
-        lastVal = p.ok; lastX = x;
+        prevX = x; prevY = y; prevGood = good;
       }
 
       // Hover tooltip (nearest point)
@@ -506,21 +609,24 @@
           tooltipEl.style.display = 'none'; return;
         }
 
-        const ts = startTs + (xPlot / plotW) * TWO_HOURS_MS;
+        const ts = startTs + (xPlot / plotW) * historyWindowMs;
 
         let nearest = null, best = Infinity, nX = null, nY = null;
         for (const p of history) {
           const diff = Math.abs(p.t - ts);
-          if (diff < best) { best = diff; nearest = p; nX = xForTs(p.t); nY = yForVal(p.ok ? 1 : 0); }
+          if (diff < best) { best = diff; nearest = p; nX = xForTs(p.t); nY = yForMs(Math.max(0, p.dt || 0)); }
         }
         if (!nearest) { tooltipEl.style.display = 'none'; return; }
 
-        tooltipEl.textContent = `${formatTime(nearest.t)} — ${nearest.ok ? "Success" : "Failure"} (${nearest.dt ?? "–"} ms)`;
+        const ms = Math.max(0, nearest.dt || 0);
+        const good = nearest.ok && ms < timeoutMs;
+        tooltipEl.textContent = `${formatTime(nearest.t)} — ${good ? "Success" : "Failure"} (${Math.round(ms)} ms)`;
         tooltipEl.style.display = 'block';
         tooltipEl.style.left = `${ev.clientX + 8}px`;
         tooltipEl.style.top = `${ev.clientY + 8}px`;
 
         // Crosshair
+        drawHistoryChart(); // clear overlays by redrawing
         ctx.save();
         ctx.strokeStyle = 'rgba(90,200,255,0.35)';
         ctx.setLineDash([4, 4]);
@@ -543,7 +649,7 @@
       intervalText.textContent = msToHuman(currentInterval);
       lastTestText.textContent = lastPoint ? formatTime(lastPoint.t) : (history.length ? formatTime(history.at(-1).t) : "–");
 
-      const { rate, label, badgeClass, tip, n } = getLast5MinStats(now);
+      const { rate, label, badgeClass, tip, n } = getWindowStats(now);
       fiveMinSuccess.textContent = n ? Math.round(rate * 100) + "%" : "No data";
 
       const prevLabel = overallLabel.textContent;
@@ -555,8 +661,9 @@
 
       const last = lastPoint || history.at(-1);
       if (last) {
-        statusText.textContent = last.ok ? "Internet is working" : "Internet is bad";
-        statusDot.style.color = last.ok ? "var(--ok)" : "var(--bad)";
+        const good = last.ok && (last.dt || 0) < timeoutMs;
+        statusText.textContent = good ? "Internet is working" : "Internet is bad";
+        statusDot.style.color = good ? "var(--ok)" : "var(--bad)";
       } else {
         statusText.textContent = "Waiting for first result…";
         statusDot.style.color = "var(--warn)";
@@ -611,7 +718,7 @@
 
       clearBtn.addEventListener("click", () => {
         LOG.warn("Clear history requested");
-        if (!confirm("Clear monitoring history (last two hours) stored locally?")) {
+        if (!confirm("Clear monitoring history stored locally (within your history window)?")) {
           LOG.info("Clear history cancelled by user");
           return;
         }
@@ -627,21 +734,16 @@
           LOG.info("Cadence reset (midpoint) after URL change", { currentInterval });
         }
       });
+      urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyUrlBtn.click(); });
 
-      urlInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") applyUrlBtn.click();
-      });
+      applyLimitsBtn.addEventListener("click", () => { applyLimits(); });
+      minIntervalInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyLimitsBtn.click(); });
+      maxIntervalInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyLimitsBtn.click(); });
 
-      applyLimitsBtn.addEventListener("click", () => {
-        applyLimits();
-      });
-
-      minIntervalInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") applyLimitsBtn.click();
-      });
-      maxIntervalInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") applyLimitsBtn.click();
-      });
+      applyWindowsBtn.addEventListener("click", () => { applyWindows(); });
+      timeoutInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyWindowsBtn.click(); });
+      historyHoursInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyWindowsBtn.click(); });
+      statusMinutesInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyWindowsBtn.click(); });
 
       window.addEventListener("resize", () => {
         LOG.debug("Window resized — redrawing chart");

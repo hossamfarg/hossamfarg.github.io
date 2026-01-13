@@ -1,140 +1,122 @@
 
-# Internet Health Monitor – SPA (Adaptive Probe, Configurable Bounds, 2s Timeout)
+# exist – SPA (Adaptive Probe, Configurable Timeouts & Windows)
 
-A zero‑dependency, single‑file web app to monitor internet reachability by probing a configurable URL. It adapts its probe frequency within **configurable bounds** (default: **10s–30s**), displays a live **2‑hour history chart**, and reports an **overall status** based on the last **5 minutes**.
+A zero‑dependency, single‑file web app to monitor internet reachability by probing a configurable URL. **exist** adapts its probe frequency within **configurable bounds**, visualizes **latency** (milliseconds) over a rolling window, and reports an **overall status** based on a configurable time window.
 
 ---
 
 ## ✅ What it does
 
-- **Connectivity probe:** Calls a target URL you set (default: `https://www.yahoo.com/favicon.ico`).
+- **Connectivity probe:** Calls a target URL you set (default: `https://www.yahoo.com/favicon.ico`), using `fetch` with `no-cors` and an explicit timeout.
 - **Adaptive cadence (configurable bounds):**
-  - **More often on failures** (shorter interval).
-  - **Less often on successes** (longer interval).
-  - **Never faster than your Min interval** and **never slower than your Max interval**.
-- **Timeout policy:** A probe **fails** if no response within **2 seconds**.
-- **Status window:** Computes **Healthy / Unstable / Down** based on the last **5 minutes**.
-- **History:** Keeps the last **2 hours** of results in a **stepped chart** (success=1, failure=0).
-- **Persistence:** Stores your **Probe URL** and **cadence limits** in the browser’s **localStorage**.
+  - **More often on failures** (interval tightens).
+  - **Less often on successes** (interval backs off).
+  - **Never faster than Min interval** and **never slower than Max interval** (both editable).
+- **Timeout policy (editable):** A probe **fails** if it doesn’t complete within **Timeout** (default: 2s).
+- **Status window (editable):** Computes **Healthy / Unstable / Down** over the last **X minutes** (default: 5 min).
+- **History window (editable):** Retains a rolling **X hours** of results (default: 2 hours) and renders a latency chart.
+- **Persistence:** Stores your **Probe URL**, **Min/Max interval**, **Timeout**, **History window**, and **Status window** in the browser’s **localStorage**.
 
 ---
 
 ## 🚀 Quick Start
 
-1. Open the HTML page in a modern browser (Chrome/Edge/Firefox).
-2. Set the **Probe URL**:
-   - Type a domain (e.g., `bing.com`) or a full link (e.g., `http://www.gstatic.com/generate_204`).
-   - Click **Apply** to start probing it immediately.
-3. (Optional) Configure cadence **limits**:
-   - Enter **Min interval (seconds)** and **Max interval (seconds)**.
-   - Click **Apply limits**.
-4. Use **Test now** to trigger a probe (respects the Min interval guard).
-5. Use **Clear history** to wipe local data (rolling 2‑hour window).
+1. Open the HTML file (`internet-monitor.html`) in a modern browser (Chrome/Edge/Firefox).
+2. Set the **Probe URL**, then click **Apply**.  
+   - You can enter a domain (e.g., `bing.com`) or a full link (e.g., `http://www.gstatic.com/generate_204`).
+   - Bare domains default to `https://` and `/favicon.ico` if no path is provided.
+3. Configure **Min interval** and **Max interval** (seconds), then **Apply limits**.
+4. Configure **Timeout (s)**, **History window (hours)**, **Status window (minutes)**, then **Apply settings**.
+5. Use **Test now** to trigger a probe (it still honors the **Min interval** guard).
+6. Use **Clear history** to wipe the rolling window stored locally.
 
-> For verbose diagnostics, append:  
-> `?log=debug&trace=1&net=1`  
-> Example: `internet-monitor.html?log=debug&trace=1&net=1`
+> For verbose diagnostics, open with:  
+> `internet-monitor.html?log=debug&trace=1&net=1`
 
 ---
 
 ## 🧭 Controls & UI
 
-- **Probe URL**: Text field at the top.  
-  - Bare domains are normalized to `https://` and default to `/favicon.ico` if no path is provided.
-  - The request includes a **cache‑buster** query param to avoid cached responses.
-- **Apply**: Saves the URL and restarts probing (cadence resets to the midpoint of your configured bounds).
-- **Min/Max interval (seconds)**: Configurable bounds for adaptive cadence (default **10s** min, **30s** max).  
-  - Enforced guardrails: **no run faster than Min** and **no run slower than Max**.
-- **Apply limits**: Saves your cadence bounds, clamps the current interval, and continues probing.
-- **Test now**: Immediately triggers a probe (throttled to not violate Min interval).
-- **Clear history**: Wipes stored history.
-- **Status badge**: Shows **Healthy / Unstable / Down**.
-- **History chart**: Stepped 0/1 line over the past **2 hours**. **Hover** for timestamp & latency tooltip.
+- **Probe URL**: Target to call. A cache‑buster is added to avoid cached responses.
+- **Min/Max interval (seconds)**: Bounds for the adaptive cadence.
+- **Timeout (seconds)**: If a probe takes longer than this, it’s counted as **Failure**.
+- **History window (hours)**: Rolling window used by the chart and data retention.
+- **Status window (minutes)**: Window used to compute the overall status.
+- **Status badge**: Shows **Healthy / Unstable / Down** based on the status window.
+- **Latency chart**: Plots latency in **ms** over the history window.  
+  - **Green** point/segment = latency **below** timeout.  
+  - **Red** = at/over timeout (failures or too slow).  
+  - **Hover** to see timestamp and duration.
+- **Test now / Clear history**: Manual controls (respect guardrails/persistence).
 
 ---
 
-## 🔧 Probe Logic (High Level)
+## 🔧 Probe Logic (High‑Level)
 
 - Uses **`fetch(url, { mode: 'no-cors' })`** with an **AbortController** timeout:
-  - If the request **completes** before the timeout, the result is **Success** (opaque response is acceptable for reachability).
-  - If the request **aborts** at **2 seconds** (or throws a network error), the result is **Failure**.
-- Works for:
+  - If the request **completes** before the timeout, the result is **Success** (opaque cross‑origin is acceptable for reachability).
+  - If the request **aborts** at **Timeout** (or errors), result is **Failure**.
+- Works with:
   - **Small public assets** (e.g., `/favicon.ico`).
-  - **204 No Content** endpoints (e.g., `http://www.gstatic.com/generate_204`), which are frequently used for connectivity checks.
-
-> `no-cors` ensures cross‑origin requests complete without exposing response contents—sufficient to confirm reachability while respecting browser security constraints.
+  - **204 No Content** endpoints (e.g., `http://www.gstatic.com/generate_204`).
 
 ---
 
-## ⏱️ Cadence (Adaptive + Configurable Guardrails)
+## ⏱️ Cadence (Adaptive + Guardrails)
 
-- **Initial interval:** Midpoint between your **Min** and **Max** (default midpoint: 20s).
-- **On Failure:** Interval **tightens** (about 30% shorter), clamped to **≥ Min**.
-- **On Success:** Interval **backs off** (about 18% longer + 0.5s), clamped to **≤ Max**.
-- **Hard guardrail:** Scheduler blocks any run **faster** than **Min** (applies to both automatic runs and “Test now”).
+- **Initial interval:** Midpoint between **Min** and **Max**.
+- **On Failure:** Interval **tightens** (~30% shorter), clamped to **≥ Min**.
+- **On Success:** Interval **backs off** (~18% longer + 0.5s), clamped to **≤ Max**.
+- **Hard guardrail:** The scheduler prevents any run **faster** than **Min** (applies to auto runs and “Test now”).
 
 ---
 
-## 🧮 Status Calculation (5‑minute window)
+## 🧮 Status (Configurable Window)
 
-- Evaluates the last **5 minutes** of results:
+- Evaluates the last **Status window** (default **5 min**):
   - **Healthy:** Success rate ≥ **90%**
   - **Unstable:** 60–89%
   - **Down:** < 60%
-- The **status badge** updates with these labels and colors.
-- The **last probe** text shows “Internet is working” or “Internet is bad”.
+- The **last probe** line also shows “Internet is working” vs “Internet is bad” based on the latest result relative to **Timeout**.
 
 ---
 
-## 📈 History Chart (2‑hour rolling window)
+## 📈 Latency Chart (Rolling History)
 
-- X-axis: Relative time across the last **2 hours**, grid every **10 minutes**.
-- Y-axis: **1 = Success**, **0 = Failure** (stepped line).
-- **Hover tooltip**: Shows **timestamp** and **duration (ms)** of the nearest data point.
-- Redraws when the window is resized.
-
-> The chart is a custom **Canvas** rendering with **no external libraries**, so it works in restricted environments (no CDNs needed).
+- X-axis: Relative time across the **History window** (default **2 hours**).
+- Y-axis: **Latency (ms)**. A dashed line marks the **Timeout** threshold.
+- **Coloring:** Each point/segment is **green** if latency < Timeout, **red** otherwise.
+- **Hover tooltip:** Timestamp & latency for the nearest data point.
+- Redraws on window resize.
 
 ---
 
 ## 💾 Persistence
 
-- **History**: Stored in `localStorage` under a dedicated key. Old points are trimmed beyond **2 hours**.
-- **Settings**: Stores your **Probe URL**, **Min interval**, and **Max interval**.
-
-> In strict privacy modes, localStorage may be unavailable.
+- **History**: Stored in `localStorage` (rolling by **History window**).
+- **Settings**: Stores **Probe URL**, **Min/Max interval**, **Timeout**, **History window**, **Status window**.
+- In privacy modes, localStorage may be disabled.
 
 ---
 
 ## ✅ Recommended URLs
 
-- Public, small assets like **`/favicon.ico`** for speed and reliability.
-- Captive portal endpoints like **`http://www.gstatic.com/generate_204`** (returns **204 No Content**)—fully supported by the `fetch`‑based probe.
+- Public, small assets like **`/favicon.ico`**.
+- Captive portal endpoints like **`http://www.gstatic.com/generate_204`** (returns **204 No Content**; handled via `fetch`).
 
 ---
 
 ## 🧩 Troubleshooting
 
-- **No persistence**: Check privacy mode or enterprise policies blocking localStorage.
-- **Unexpected failures**: Confirm the endpoint is public (no auth) and reachable; consider testing with a known-fast CDN endpoint.
-- **Probe “works in browser but shows Failure here”**: If the endpoint demands credentials or blocks cross-origin, the `fetch` may fail. Prefer public test endpoints.
-
----
-
-## ⚙️ Config Summary
-
-- **Min interval (default):** 10s (editable)
-- **Max interval (default):** 30s (editable)
-- **Timeout:** 2s
-- **History window:** 2 hours
-- **Status window:** 5 minutes
-- **Adaptive rules:** Tighten on Failure; Back off on Success (within your configured bounds)
+- **No persistence**: Likely due to privacy mode or enterprise storage policy.
+- **Unexpected failures**: Verify the endpoint is public/reachable; try a known CDN asset.
+- **“Works in browser but fails here”**: If the endpoint requires credentials or disallows cross-origin requests, it may not resolve in `no-cors`. Prefer public test endpoints.
 
 ---
 
 ## 🔍 Optional Diagnostics
 
-Append query params for logging:
+Append query params:
 
 - `?log=debug` — verbose logs
 - `&trace=1` — grouped logs (`runOnce()`, `updateUI()`, `probeOnce()`)
@@ -145,13 +127,5 @@ Example:
 
 ---
 
-## ✨ Great for
-
-- Quick incident validation of connectivity.
-- Lightweight monitoring without agents or servers.
-- Visual evidence of intermittent issues (chart + success %).
-- Sharing with teams or attaching to tickets.
-
----
-
-*Save the HTML locally and run. No external dependencies. Configurable cadence bounds and URL, persisted on your device.*
+*exist is a local, client‑side tool. Save the HTML and run—no external dependencies.*
+``
