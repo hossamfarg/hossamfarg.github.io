@@ -1,0 +1,808 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>exist – Probe</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b1220; --card: #131c2e; --text: #e8eefc; --muted: #a7b3cc;
+      --ok: #21c16b; --warn: #ffb703; --bad: #ff5d5d; --accent: #5ac8ff;
+      --grid: #1f2a44; --border: #1e2840;
+      --tooltip-bg: #0e1728; --tooltip-border: #203055;
+      --btn-bg: #17335a; --btn-border: #2a4c7b;
+    }
+    /* Base */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    }
+    /* Layout */
+    .page {
+      max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; grid-template-columns: 1fr;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .title {
+      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+      font-size: 1.2rem; color: var(--muted);
+    }
+    .brand { color: var(--text); font-weight: 700; }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; font-weight: 600;
+    }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+    .badge-healthy { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+    .badge-unstable { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+    .badge-down { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .pill {
+      background: #0e1728; border: 1px solid #203055; color: var(--muted);
+      padding: 6px 10px; border-radius: 8px; font-size: 0.95rem;
+    }
+    .big { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+    .hint { color: var(--muted); font-size: 0.9rem; }
+    .divider { height: 1px; background: var(--border); margin: 10px 0; }
+    button {
+      background: var(--btn-bg); color: var(--text); border: 1px solid var(--btn-border);
+      padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.95rem;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .icon-btn { display: inline-flex; align-items: center; gap: 8px; }
+    .gear { width: 18px; height: 18px; display: inline-block; border-radius: 4px; background: linear-gradient(135deg,#5ac8ff40,#5ac8ff10); border: 1px solid #2a4c7b; position: relative; }
+    .gear:after {
+      content: ""; position: absolute; inset: 3px; border-radius: 2px; border: 1px dashed #5ac8ff80;
+    }
+    /* Keep Test-now width stable when counter appears */
+    #testNowBtn { min-width: 110px; }
+
+    /* Canvas */
+    .canvas-wrap { position: relative; }
+    #historyCanvas { width: 100%; height: 42vh; max-height: 360px; display: block; }
+    /* Tooltip */
+    .tooltip {
+      position: fixed; z-index: 1000; pointer-events: none;
+      background: var(--tooltip-bg); color: var(--text);
+      border: 1px solid var(--tooltip-border); border-radius: 8px;
+      padding: 6px 8px; font-size: 12px; box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+      white-space: nowrap; transform: translate(8px, 8px);
+    }
+    /* Modal (Settings) */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+      display: none; align-items: center; justify-content: center; z-index: 2000;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      width: 96vw; max-width: 640px; max-height: 88vh; overflow: auto;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    }
+    .modal header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .modal h3 { margin: 0; font-size: 1.1rem; }
+    .form-grid {
+      display: grid; gap: 10px; grid-template-columns: 1fr 1fr;
+    }
+    .form-row { display: flex; flex-direction: column; gap: 6px; }
+    label { color: var(--muted); font-size: 0.9rem; }
+    input[type="text"], input[type="number"] {
+      background: #0e1728; color: var(--text); border: 1px solid #203055;
+      padding: 10px; border-radius: 10px; width: 100%;
+    }
+    .modal .actions { justify-content: flex-end; margin-top: 8px; gap: 8px; }
+    .danger { background: #4a1f1f; border-color: #803333; }
+    .secondary { background: #0e1728; border-color: #203055; }
+    /* Mobile */
+    @media (max-width: 640px) {
+      body { padding: 12px; }
+      .big { font-size: 1.35rem; }
+      button { padding: 10px 12px; font-size: 0.95rem; }
+      .pill { font-size: 0.9rem; }
+      .form-grid { grid-template-columns: 1fr; }
+      #historyCanvas { height: 46vh; max-height: 420px; }
+      header .actions { width: 100%; justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="title">
+        <span class="brand">exist</span>
+        <span class="hint">· Probing: <span id="probeUrlLabel">https://www.yahoo.com/favicon.ico</span></span>
+      </div>
+      <div class="actions">
+        <button id="settingsBtn" class="icon-btn" title="Open settings">
+          <span class="gear"></span><span>Settings</span>
+        </button>
+        <button id="testNowBtn" title="Run a test immediately">Test now</button>
+        <div id="statusBadge" class="status-badge badge-down" aria-live="polite">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Starting…</span>
+        </div>
+      </div>
+    </header>
+    <!-- Summary -->
+    <section class="card">
+      <div class="row">
+        <div class="pill">Current interval: <strong id="intervalText">–</strong></div>
+        <div class="pill">Last test: <strong id="lastTestText">–</strong></div>
+        <div class="pill"><span id="statusWindowLabel">5‑min</span> success: <strong id="fiveMinSuccess">–</strong></div>
+      </div>
+      <div class="divider"></div>
+      <div class="row" style="justify-content: space-between;">
+        <div>
+          <div class="hint">Overall (<span id="overallWindowLabel">last 5 minutes</span>)</div>
+          <div class="big" id="overallLabel">Calculating…</div>
+          <div class="hint" id="adviceText"></div>
+        </div>
+        <div class="hint">
+          <ul style="margin:0; padding-left: 18px;">
+            <li>Adaptive cadence (<strong id="notesMin">10s</strong>–<strong id="notesMax">30s</strong>)</li>
+            <li>Timeout: <strong id="notesTimeout">2s</strong> (red if ≥ timeout, green if &lt; timeout)</li>
+            <li>History: <strong id="notesHistory">2 hours</strong>; Status: <strong id="notesStatus">5 minutes</strong></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    <!-- Chart -->
+    <section class="card">
+      <div class="row">
+        <div class="pill">Latency (ms) over <span id="historyWindowLabel">last 2 hours</span></div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="historyCanvas"></canvas>
+      </div>
+      <div class="hint" style="margin-top:6px;">
+        Hover/touch the chart to see a tooltip with timestamp and duration. Green = under timeout; Red = timeout or slower.
+      </div>
+    </section>
+  </div>
+  <!-- Tooltip -->
+  <div id="tooltip" class="tooltip" style="display:none;"></div>
+  <!-- Settings Modal -->
+  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal" role="document">
+      <header>
+        <h3>exist — Settings</h3>
+        <button id="closeSettingsBtn" class="secondary" title="Close">Close</button>
+      </header>
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="urlInput">Probe URL</label>
+          <input id="urlInput" type="text" placeholder="https://example.com/favicon.ico or example.com" />
+        </div>
+        <div class="form-row">
+          <label for="timeoutInput">Timeout (seconds)</label>
+          <input id="timeoutInput" type="number" min="0.1" step="0.1" />
+        </div>
+        <div class="form-row">
+          <label for="minIntervalInput">Min interval (seconds)</label>
+          <input id="minIntervalInput" type="number" min="1" step="1" />
+        </div>
+        <div class="form-row">
+          <label for="maxIntervalInput">Max interval (seconds)</label>
+          <input id="maxIntervalInput" type="number" min="1" step="1" />
+        </div>
+        <div class="form-row">
+          <label for="historyHoursInput">History window (hours)</label>
+          <input id="historyHoursInput" type="number" min="0.1" step="0.1" />
+        </div>
+        <div class="form-row">
+          <label for="statusMinutesInput">Status window (minutes)</label>
+          <input id="statusMinutesInput" type="number" min="1" step="1" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="resetDefaultsBtn" class="secondary" title="Reset to defaults">Reset defaults</button>
+        <button id="clearBtn" class="danger" title="Clear stored history">Clear history</button>
+        <button id="saveSettingsBtn" title="Save settings">Save</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // ===================== Logging subsystem =====================
+    const qp = new URLSearchParams(location.search);
+    const LOG_LEVEL = (qp.get("log") || "info").toLowerCase(); // debug|info|warn|error
+    const TRACE = qp.get("trace") === "1";
+    const NET = qp.get("net") === "1";
+    const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+    const curLevel = LEVELS[LOG_LEVEL] ?? LEVELS.info;
+    const fmtTime = () => new Date().toISOString();
+    const styles = {
+      base: "padding:1px 6px;border-radius:6px;color:#fff;font-weight:700",
+      debug: "background:#6b7280", info: "background:#2563eb", warn: "background:#f59e0b", error: "background:#dc2626"
+    };
+    function logAt(level, tag, msg, ...rest) {
+      if (LEVELS[level] < curLevel) return;
+      const s = styles[level] || styles.info; const t = fmtTime();
+      const fn = level === "error" ? console.error
+        : level === "warn" ? console.warn
+        : level === "debug" ? console.debug
+        : console.log;
+      try { fn(`%c${tag} ${t} — ${msg}`, `${styles.base};${s}`, ...rest); }
+      catch { console.log(`[${tag}] ${t} — ${msg}`, ...rest); }
+    }
+    const LOG = {
+      debug: (msg, ...rest) => logAt("debug", "DEBUG", msg, ...rest),
+      info:  (msg, ...rest) => logAt("info",  "INFO",  msg, ...rest),
+      warn:  (msg, ...rest) => logAt("warn",  "WARN",  msg, ...rest),
+      error: (msg, ...rest) => logAt("error", "ERROR", msg, ...rest),
+      group: (label) => { if (TRACE) console.group?.(label); },
+      groupEnd: () => { if (TRACE) console.groupEnd?.(); },
+      time: (label) => { if (NET) console.time?.(label); },
+      timeEnd: (label) => { if (NET) console.timeEnd?.(label); },
+    };
+    LOG.info(`Booting exist (level=${LOG_LEVEL}, trace=${TRACE}, net=${NET})`);
+    // ----------------------- Config (defaults) -----------------------
+    const DEFAULTS = {
+      probeUrl: "https://www.yahoo.com/favicon.ico",
+      minSec: 10,
+      maxSec: 30,
+      timeoutSec: 2,
+      historyHours: 2,
+      statusMinutes: 5
+    };
+    const STORAGE_KEY = "internetMonitorHistoryV1";
+    const SETTINGS_KEY = "internetMonitorSettingsV1";
+    const STATUS_THRESHOLDS = { healthy: 0.90, unstable: 0.60 };
+    // -------------------------- State --------------------------
+    let timerId = null;
+    let lastRunAt = 0;
+    let cooldownTimerId = null; // <--- NEW
+    let history = loadHistory();
+    let settings = loadSettings();
+    let probeUrl = settings?.probeUrl ?? DEFAULTS.probeUrl;
+    let minIntervalMs = (settings?.minIntervalMs ?? DEFAULTS.minSec * 1000);
+    let maxIntervalMs = (settings?.maxIntervalMs ?? DEFAULTS.maxSec * 1000);
+    let timeoutMs = (settings?.timeoutMs ?? DEFAULTS.timeoutSec * 1000);
+    let historyWindowMs = (settings?.historyWindowMs ?? DEFAULTS.historyHours * 3600000);
+    let statusWindowMs = (settings?.statusWindowMs ?? DEFAULTS.statusMinutes * 60000);
+    let currentInterval = clamp(Math.round((minIntervalMs + maxIntervalMs) / 2), minIntervalMs, maxIntervalMs);
+    // ---------------------------- DOM ----------------------------
+    const intervalText = document.getElementById("intervalText");
+    const lastTestText = document.getElementById("lastTestText");
+    const fiveMinSuccess = document.getElementById("fiveMinSuccess");
+    const statusText = document.getElementById("statusText");
+    const statusBadge = document.getElementById("statusBadge");
+    const statusDot = document.getElementById("statusDot");
+    const testNowBtn = document.getElementById("testNowBtn");
+    const overallLabel = document.getElementById("overallLabel");
+    const adviceText = document.getElementById("adviceText");
+    const historyCanvas = document.getElementById("historyCanvas");
+    const tooltipEl = document.getElementById("tooltip");
+    const probeUrlLabel = document.getElementById("probeUrlLabel");
+    const notesMin = document.getElementById("notesMin");
+    const notesMax = document.getElementById("notesMax");
+    const notesTimeout = document.getElementById("notesTimeout");
+    const notesHistory = document.getElementById("notesHistory");
+    const notesStatus = document.getElementById("notesStatus");
+    const statusWindowLabel = document.getElementById("statusWindowLabel");
+    const overallWindowLabel = document.getElementById("overallWindowLabel");
+    const historyWindowLabel = document.getElementById("historyWindowLabel");
+    // Settings modal elements
+    const modalBackdrop = document.getElementById("modalBackdrop");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+    const resetDefaultsBtn = document.getElementById("resetDefaultsBtn");
+    const urlInput = document.getElementById("urlInput");
+    const timeoutInput = document.getElementById("timeoutInput");
+    const minIntervalInput = document.getElementById("minIntervalInput");
+    const maxIntervalInput = document.getElementById("maxIntervalInput");
+    const historyHoursInput = document.getElementById("historyHoursInput");
+    const statusMinutesInput = document.getElementById("statusMinutesInput");
+    const clearBtn = document.getElementById("clearBtn");
+    const ctx = historyCanvas.getContext("2d");
+    // Initialize labels & modal values
+    probeUrlLabel.textContent = probeUrl;
+    fillSettingsForm();
+    refreshNotesAndWindowLabels();
+
+    // -------------------------- Utilities --------------------------
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function msToHuman(ms) { return Math.round(ms / 1000) + "s"; }
+    function humanizeWindow(ms) {
+      if (ms >= 3600000) {
+        const h = (ms / 3600000);
+        return (h % 1 === 0 ? h.toFixed(0) : h.toFixed(1)) + " hours";
+      } else {
+        return Math.round(ms / 60000) + " minutes";
+      }
+    }
+    function humanizeShort(ms) {
+      if (ms >= 3600000) return (ms/3600000).toFixed(1) + " h";
+      if (ms >= 60000) return Math.round(ms/60000) + " min";
+      return Math.round(ms/1000) + " s";
+    }
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+    function saveHistory() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); }
+      catch (e) { LOG.error("Failed to save history to localStorage", e); }
+    }
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) { LOG.info("No saved history found"); return []; }
+        const parsed = JSON.parse(raw);
+        const filtered = Array.isArray(parsed) ? parsed.filter(p => typeof p.t === "number" && typeof p.ok === "boolean") : [];
+        LOG.info(`Loaded ${filtered.length} history points from storage`);
+        return filtered;
+      } catch (e) { LOG.error("Failed to load/parse history from localStorage", e); return []; }
+    }
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === "object") ? parsed : {};
+      } catch (e) {
+        LOG.error("Failed to load settings", e);
+        return {};
+      }
+    }
+    function saveSettings() {
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+          probeUrl, minIntervalMs, maxIntervalMs, timeoutMs, historyWindowMs, statusWindowMs
+        }));
+      } catch (e) { LOG.error("Failed to save settings", e); }
+    }
+    function trimHistory(now = Date.now()) {
+      const cutoff = now - historyWindowMs;
+      const before = history.length;
+      history = history.filter(p => p.t >= cutoff);
+      const removed = before - history.length;
+      if (removed > 0) LOG.debug(`Trimmed ${removed} points older than ${new Date(cutoff).toISOString()}`);
+    }
+    function refreshNotesAndWindowLabels() {
+      notesMin.textContent = `${Math.round(minIntervalMs/1000)}s`;
+      notesMax.textContent = `${Math.round(maxIntervalMs/1000)}s`;
+      notesTimeout.textContent = `${+(timeoutMs/1000).toFixed(1)}s`;
+      notesHistory.textContent = humanizeWindow(historyWindowMs);
+      notesStatus.textContent = humanizeWindow(statusWindowMs);
+      statusWindowLabel.textContent = humanizeShort(statusWindowMs);
+      overallWindowLabel.textContent = `last ${humanizeWindow(statusWindowMs)}`;
+      historyWindowLabel.textContent = `last ${humanizeWindow(historyWindowMs)}`;
+    }
+    // Normalize user input into a usable URL
+    function normalizeProbeUrl(input) {
+      if (!input) return null;
+      let s = (input + "").trim();
+      if (!s) return null;
+      if (!/^https?:\/\//i.test(s)) s = "https://" + s; // default to https
+      let urlObj;
+      try { urlObj = new URL(s); }
+      catch (e) { LOG.error("Invalid URL entered", s, e); return null; }
+      if (!urlObj.pathname || urlObj.pathname === "/") urlObj.pathname = "/favicon.ico"; // default path
+      urlObj.hash = "";
+      return urlObj.toString();
+    }
+    function setProbeUrl(newUrlStr) {
+      const normalized = normalizeProbeUrl(newUrlStr);
+      if (!normalized) { LOG.warn("Probe URL not changed – invalid input"); return false; }
+      probeUrl = normalized;
+      probeUrlLabel.textContent = probeUrl;
+      saveSettings();
+      LOG.info("Probe URL updated", { probeUrl });
+      // Reset cadence to midpoint within current bounds
+      currentInterval = clamp(Math.round((minIntervalMs + maxIntervalMs)/2), minIntervalMs, maxIntervalMs);
+      clearTimeout(timerId);
+      scheduleNext(0, "url-change");
+      return true;
+    }
+
+    // ---------- Test-now cooldown (NEW) ----------
+    function msUntilAllowed() {
+      const elapsed = Date.now() - (lastRunAt || 0);
+      return Math.max(0, (minIntervalMs || 0) - elapsed);
+    }
+    function startTestCooldown() {
+      stopTestCooldown();
+      const update = () => {
+        const remain = msUntilAllowed();
+        if (remain <= 0) {
+          testNowBtn.disabled = false;
+          testNowBtn.textContent = 'Test now';
+          testNowBtn.setAttribute('aria-disabled', 'false');
+          testNowBtn.title = 'Run a test immediately';
+          stopTestCooldown();
+          return;
+        }
+        const s = Math.ceil(remain / 1000);
+        testNowBtn.disabled = true;
+        testNowBtn.textContent = `Test now (${s}s)`;
+        testNowBtn.setAttribute('aria-disabled', 'true');
+        testNowBtn.title = `Available in ${s}s`;
+      };
+      update();
+      cooldownTimerId = setInterval(update, 250);
+    }
+    function stopTestCooldown() {
+      if (cooldownTimerId !== null) {
+        clearInterval(cooldownTimerId);
+        cooldownTimerId = null;
+      }
+    }
+
+    // ---------------- Probe (fetch + timeout, no-cors) ----------------
+    async function probeOnce() {
+      LOG.group("probeOnce()");
+      const label = "probeOnce-duration";
+      const start = performance.now();
+      const controller = new AbortController();
+      const to = setTimeout(() => controller.abort(), timeoutMs);
+      const src = probeUrl + (probeUrl.includes("?") ? "&" : "?") + "_=" + Date.now();
+      try {
+        if (NET) LOG.time(label);
+        LOG.debug("Starting fetch probe", { url: src, timeoutMs });
+        await fetch(src, { mode: "no-cors", signal: controller.signal });
+        const duration = performance.now() - start;
+        clearTimeout(to);
+        if (NET) LOG.timeEnd(label);
+        LOG.info(`Probe success in ${Math.round(duration)} ms`);
+        LOG.groupEnd();
+        return { ok: true, duration };
+      } catch (err) {
+        const duration = performance.now() - start;
+        clearTimeout(to);
+        if (NET) LOG.timeEnd(label);
+        const isAbort = err && (err.name === "AbortError" || err.code === 20);
+        LOG.warn(`Probe ${isAbort ? "timeout" : "error"} after ${Math.round(duration)} ms`, err);
+        LOG.groupEnd();
+        return { ok: false, duration, error: isAbort ? "timeout" : "error" };
+      }
+    }
+
+    // ------------------------- Scheduling -------------------------
+    function scheduleNext(delay = currentInterval, reason = "normal") {
+      clearTimeout(timerId);
+      LOG.debug(`Scheduling next run in ${delay} ms (reason=${reason})`);
+      timerId = setTimeout(runOnce, delay);
+    }
+    function adjustInterval(ok) {
+      const before = currentInterval;
+      if (!ok) {
+        currentInterval = Math.max(minIntervalMs, Math.round(currentInterval * 0.70));
+      } else {
+        currentInterval = Math.min(maxIntervalMs, Math.round(currentInterval * 1.18 + 500));
+      }
+      LOG.info(`Cadence ${ok ? "backoff" : "tighten"}: ${before} → ${currentInterval} ms (bounds ${minIntervalMs}..${maxIntervalMs})`);
+    }
+
+    // ---------------------- Status (windowed) ----------------------
+    function getWindowStats(now = Date.now()) {
+      const cutoff = now - statusWindowMs;
+      const windowData = history.filter(p => p.t >= cutoff);
+      const n = windowData.length;
+      const succ = windowData.reduce((a, p) => a + (p.ok ? 1 : 0), 0);
+      const rate = n ? succ / n : 0;
+      let label = "Down", badgeClass = "badge-down", tip = "Frequent failures detected. Check cabling/ISP/router/DNS.";
+      if (rate >= STATUS_THRESHOLDS.healthy) { label = "Healthy"; badgeClass = "badge-healthy"; tip = "Connectivity looks solid."; }
+      else if (rate >= STATUS_THRESHOLDS.unstable) { label = "Unstable"; badgeClass = "badge-unstable"; tip = "Intermittent issues observed. Monitor closely."; }
+      LOG.debug(`Status window stats: n=${n}, succ=${succ}, rate=${(rate*100).toFixed(1)}%, label=${label}`);
+      return { n, succ, rate, label, badgeClass, tip };
+    }
+
+    // --------------- Canvas Chart: latency (ms) ----------------
+    function drawHistoryChart() {
+      const wCss = historyCanvas.clientWidth || 800;
+      const hCss = historyCanvas.clientHeight || Math.min(360, Math.round(window.innerHeight * 0.42));
+      const dpr = window.devicePixelRatio || 1;
+      historyCanvas.width = Math.max(1, Math.floor(wCss * dpr));
+      historyCanvas.height = Math.max(1, Math.floor(hCss * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = wCss, h = hCss;
+      const padLeft = 56, padRight = 20, padTop = 20, padBottom = 36;
+      const plotW = w - padLeft - padRight;
+      const plotH = h - padTop - padBottom;
+      ctx.clearRect(0, 0, w, h);
+      const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim() || '#1f2a44';
+      const textColor = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#a7b3cc';
+      // Time window
+      const now = Date.now();
+      const startTs = now - historyWindowMs;
+      // Determine y-range from data and timeout
+      let maxLatency = timeoutMs;
+      for (const p of history) {
+        if (p.t < startTs) continue;
+        if (p.t > now) break;
+        maxLatency = Math.max(maxLatency, p.dt || 0);
+      }
+      const yMax = Math.max(100, Math.ceil(maxLatency * 1.15));
+      const yMin = 0;
+      // Grid: horizontal ms lines (4 ticks)
+      ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+      ctx.fillStyle = textColor; ctx.font = '12px system-ui';
+      const yTicks = 4;
+      for (let i = 0; i <= yTicks; i++) {
+        const v = yMin + (i * (yMax - yMin) / yTicks);
+        const y = padTop + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+        ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(padLeft + plotW, y); ctx.stroke();
+        ctx.fillText(`${Math.round(v)} ms`, 4, y + 4);
+      }
+      // Timeout threshold line
+      const yThresh = padTop + (1 - (timeoutMs - yMin) / (yMax - yMin)) * plotH;
+      ctx.strokeStyle = 'rgba(255, 183, 3, 0.75)';
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(padLeft, yThresh); ctx.lineTo(padLeft + plotW, yThresh); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = textColor; ctx.fillText(`timeout (${Math.round(timeoutMs)} ms)`, padLeft + 6, yThresh - 6);
+      // X grid: dynamic step
+      const mins = historyWindowMs / 60000;
+      let stepMin = 10;
+      if (mins <= 15) stepMin = 2;
+      else if (mins <= 30) stepMin = 5;
+      else if (mins <= 60) stepMin = 10;
+      else if (mins <= 120) stepMin = 10;
+      else stepMin = 30;
+      for (let m = 0; m <= Math.ceil(mins); m += stepMin) {
+        const ts = startTs + m * 60000;
+        const x = padLeft + ((ts - startTs) / historyWindowMs) * plotW;
+        ctx.strokeStyle = gridColor;
+        ctx.beginPath(); ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + plotH); ctx.stroke();
+        ctx.fillStyle = textColor;
+        const timeStr = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        ctx.fillText(timeStr, x - 18, padTop + plotH + 18);
+      }
+      const xForTs = (ts) => padLeft + ((ts - startTs) / historyWindowMs) * plotW;
+      const yForMs = (ms) => padTop + (1 - (ms - yMin) / (yMax - yMin)) * plotH;
+      // Draw line & markers
+      ctx.lineWidth = 2;
+      let prevX = null, prevY = null;
+      for (let i = 0; i < history.length; i++) {
+        const p = history[i];
+        if (p.t < startTs) continue;
+        const x = xForTs(p.t);
+        if (x < padLeft) continue;
+        if (x > padLeft + plotW) break;
+        const ms = Math.max(0, p.dt || 0);
+        const y = yForMs(ms);
+        const good = p.ok && ms < timeoutMs;
+        if (prevX !== null && prevY !== null) {
+          ctx.strokeStyle = good ? '#21c16b' : '#ff5d5d';
+          ctx.beginPath();
+          ctx.moveTo(prevX, prevY);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+        ctx.fillStyle = good ? '#21c16b' : '#ff5d5d';
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+        prevX = x; prevY = y;
+      }
+      // Tooltip
+      function showTooltip(clientX, clientY) {
+        const rect = historyCanvas.getBoundingClientRect();
+        const xCss = clientX - rect.left;
+        const yCss = clientY - rect.top;
+        const xPlot = xCss - padLeft;
+        const yPlot = yCss - padTop;
+        if (xPlot < 0 || xPlot > plotW || yPlot < 0 || yPlot > plotH) {
+          tooltipEl.style.display = 'none'; return;
+        }
+        const ts = startTs + (xPlot / plotW) * historyWindowMs;
+        let nearest = null, best = Infinity, nX = null, nY = null;
+        for (const p of history) {
+          const diff = Math.abs(p.t - ts);
+          if (diff < best) { best = diff; nearest = p; nX = xForTs(p.t); nY = yForMs(Math.max(0, p.dt || 0)); }
+        }
+        if (!nearest) { tooltipEl.style.display = 'none'; return; }
+        const ms = Math.max(0, nearest.dt || 0);
+        const good = nearest.ok && ms < timeoutMs;
+        tooltipEl.textContent = `${formatTime(nearest.t)} — ${good ? "Success" : "Failure"} (${Math.round(ms)} ms)`;
+        tooltipEl.style.display = 'block';
+        tooltipEl.style.left = `${clientX + 8}px`;
+        tooltipEl.style.top = `${clientY + 8}px`;
+        // Crosshair
+        drawHistoryChart();
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90,200,255,0.35)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(nX, padTop); ctx.lineTo(nX, padTop + plotH);
+        ctx.moveTo(padLeft, nY); ctx.lineTo(padLeft + plotW, nY);
+        ctx.stroke();
+        ctx.restore();
+      }
+      historyCanvas.onmousemove = (ev) => showTooltip(ev.clientX, ev.clientY);
+      historyCanvas.onmouseleave = () => { tooltipEl.style.display = 'none'; drawHistoryChart(); };
+      historyCanvas.ontouchstart = (ev) => { if (ev.touches && ev.touches[0]) showTooltip(ev.touches[0].clientX, ev.touches[0].clientY); };
+      historyCanvas.ontouchmove = (ev) => { if (ev.touches && ev.touches[0]) showTooltip(ev.touches[0].clientX, ev.touches[0].clientY); };
+      historyCanvas.ontouchend = () => { tooltipEl.style.display = 'none'; drawHistoryChart(); };
+    }
+
+    // ----------------------------- UI -----------------------------
+    function updateUI(lastPoint = null) {
+      LOG.group("updateUI()");
+      const now = Date.now();
+      trimHistory(now);
+      saveHistory();
+      intervalText.textContent = msToHuman(currentInterval);
+      lastTestText.textContent = lastPoint ? formatTime(lastPoint.t) : (history.length ? formatTime(history.at(-1).t) : "–");
+      const { rate, label, badgeClass, tip, n } = getWindowStats(now);
+      fiveMinSuccess.textContent = n ? Math.round(rate * 100) + "%" : "No data";
+      const prevLabel = overallLabel.textContent;
+      overallLabel.textContent = label;
+      adviceText.textContent = tip;
+      statusBadge.classList.remove("badge-healthy", "badge-unstable", "badge-down");
+      statusBadge.classList.add(badgeClass);
+      const last = lastPoint || history.at(-1);
+      if (last) {
+        const good = last.ok && (last.dt || 0) < timeoutMs;
+        statusText.textContent = good ? "Internet is working" : "Internet is bad";
+        statusDot.style.color = good ? "var(--ok)" : "var(--bad)";
+      } else {
+        statusText.textContent = "Waiting for first result…";
+        statusDot.style.color = "var(--warn)";
+      }
+      if (prevLabel && prevLabel !== label) LOG.info(`Overall label changed: ${prevLabel} → ${label}`);
+      drawHistoryChart();
+      LOG.groupEnd();
+    }
+
+    // ----------------------------- Run Loop -----------------------------
+    async function runOnce() {
+      LOG.group("runOnce()");
+      const now = Date.now();
+      const since = now - lastRunAt;
+      if (lastRunAt && since < minIntervalMs) {
+        const wait = minIntervalMs - since;
+        LOG.warn(`Throttled: last run ${since} ms ago, waiting ${wait} ms`);
+        scheduleNext(wait, "throttled");
+        LOG.groupEnd();
+        return;
+      }
+      lastRunAt = now; // sets baseline for cooldown
+      const res = await probeOnce();
+      const point = { t: Date.now(), ok: !!res.ok, dt: Math.round(res.duration) };
+      history.push(point);
+      LOG.info(`Result: ${point.ok ? "SUCCESS" : "FAIL"} (${point.dt} ms) @ ${new Date(point.t).toISOString()}`);
+      updateUI(point);
+      startTestCooldown();                 // <--- NEW: reflect new baseline immediately
+      adjustInterval(point.ok);
+      scheduleNext(currentInterval, "post-run");
+      LOG.groupEnd();
+    }
+
+    // ----------------------- Modal (Settings) -----------------------
+    function openSettings() {
+      fillSettingsForm();
+      modalBackdrop.classList.add("show");
+      modalBackdrop.setAttribute("aria-hidden", "false");
+    }
+    function closeSettings() {
+      modalBackdrop.classList.remove("show");
+      modalBackdrop.setAttribute("aria-hidden", "true");
+    }
+    function fillSettingsForm() {
+      urlInput.value = probeUrl;
+      timeoutInput.value = +(timeoutMs / 1000).toFixed(1);
+      minIntervalInput.value = Math.round(minIntervalMs / 1000);
+      maxIntervalInput.value = Math.round(maxIntervalMs / 1000);
+      historyHoursInput.value = +(historyWindowMs / 3600000).toFixed(1);
+      statusMinutesInput.value = Math.round(statusWindowMs / 60000);
+    }
+    function applySettingsFromForm() {
+      // Validate & apply
+      const newUrl = urlInput.value;
+      const tSec = Number(timeoutInput.value);
+      const minSec = Number(minIntervalInput.value);
+      const maxSec = Number(maxIntervalInput.value);
+      const hHours = Number(historyHoursInput.value);
+      const sMin = Number(statusMinutesInput.value);
+      if (!newUrl
+        || !Number.isFinite(tSec) || tSec <= 0
+        || !Number.isFinite(minSec) || minSec <= 0
+        || !Number.isFinite(maxSec) || maxSec <= 0
+        || !Number.isFinite(hHours) || hHours <= 0
+        || !Number.isFinite(sMin) || sMin <= 0) {
+        alert("Please enter valid positive values for all settings."); return false;
+      }
+      if (maxSec < minSec) {
+        alert("Max interval must be greater than or equal to Min interval."); return false;
+      }
+      // URL
+      setProbeUrl(newUrl);
+      // Limits
+      minIntervalMs = Math.round(minSec * 1000);
+      maxIntervalMs = Math.round(maxSec * 1000);
+      currentInterval = clamp(currentInterval, minIntervalMs, maxIntervalMs);
+      // Windows
+      timeoutMs = Math.round(tSec * 1000);
+      historyWindowMs = Math.round(hHours * 3600000);
+      statusWindowMs = Math.round(sMin * 60000);
+      saveSettings();
+      refreshNotesAndWindowLabels();
+      startTestCooldown();                 // <--- NEW: recompute countdown after min change
+      // Trim/redraw/reschedule
+      updateUI();
+      clearTimeout(timerId);
+      scheduleNext(0, "settings-change");
+      return true;
+    }
+    function resetDefaults() {
+      setProbeUrl(DEFAULTS.probeUrl);
+      minIntervalMs = DEFAULTS.minSec * 1000;
+      maxIntervalMs = DEFAULTS.maxSec * 1000;
+      timeoutMs = DEFAULTS.timeoutSec * 1000;
+      historyWindowMs = DEFAULTS.historyHours * 3600000;
+      statusWindowMs = DEFAULTS.statusMinutes * 60000;
+      currentInterval = clamp(Math.round((minIntervalMs + maxIntervalMs)/2), minIntervalMs, maxIntervalMs);
+      saveSettings();
+      refreshNotesAndWindowLabels();
+      fillSettingsForm();
+      updateUI();
+      startTestCooldown();                 // <--- NEW: reflect defaults immediately
+      clearTimeout(timerId);
+      scheduleNext(0, "reset-defaults");
+    }
+
+    // --------------------------- Events ---------------------------
+    function wireEvents() {
+      // Main actions
+      testNowBtn.addEventListener("click", () => {
+        LOG.info("Manual 'Test now' clicked");
+        if (msUntilAllowed() > 0) {
+          LOG.warn("Manual test throttled due to min-interval guard");
+          startTestCooldown(); // show live countdown
+          return;
+        }
+        clearTimeout(timerId);
+        // visual feedback while running
+        testNowBtn.disabled = true;
+        testNowBtn.textContent = 'Testing…';
+        testNowBtn.setAttribute('aria-disabled', 'true');
+        runOnce();
+      });
+      // Modal actions
+      settingsBtn.addEventListener("click", openSettings);
+      closeSettingsBtn.addEventListener("click", closeSettings);
+      modalBackdrop.addEventListener("click", (e) => {
+        if (e.target === modalBackdrop) closeSettings();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (modalBackdrop.classList.contains("show") && e.key === "Escape") closeSettings();
+      });
+      saveSettingsBtn.addEventListener("click", () => { if (applySettingsFromForm()) closeSettings(); });
+      resetDefaultsBtn.addEventListener("click", resetDefaults);
+      clearBtn.addEventListener("click", () => {
+        LOG.warn("Clear history requested");
+        if (!confirm("Clear monitoring history stored locally (within your history window)?")) {
+          LOG.info("Clear history cancelled by user"); return;
+        }
+        history = []; saveHistory(); updateUI(); LOG.info("History cleared");
+      });
+      // Responsive redraw
+      window.addEventListener("resize", () => {
+        LOG.debug("Window resized — redrawing chart");
+        drawHistoryChart();
+      });
+    }
+
+    // --------------------------- Start ---------------------------
+    window.addEventListener("load", () => {
+      LOG.group("boot()");
+      wireEvents();
+      updateUI();
+      startTestCooldown();               // <--- NEW: initialize button state
+      scheduleNext(0, "boot");
+      LOG.groupEnd();
+    });
+  </script>
+</body>
+</html>
