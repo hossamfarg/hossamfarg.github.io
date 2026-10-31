@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Carriage Out - Royal Carriage Jam</title>
+  <style>
+    :root {
+      --bg-dark: #121016;
+      --gold: #f4c430;
+      --gold-dark: #b8860b;
+      --accent: #ff4757;
+      --surface: #221f28;
+      --surface-border: #3d3648;
+      --text: #f0e6d2;
+      --text-dim: #9b90a6;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    }
+    body {
+      background: var(--bg-dark);
+      color: var(--text);
+      overflow: hidden;
+      touch-action: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100vw;
+      height: 100vh;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      height: 100%;
+      max-height: 860px;
+      background: #18151f;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 2px var(--gold-dark);
+      overflow: hidden;
+    }
+    header {
+      padding: 8px 12px;
+      background: rgba(24, 21, 31, 0.95);
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+    .level-info { display: flex; flex-direction: column; }
+    .level-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); font-weight: 700; }
+    .level-name { font-size: 1.05rem; font-weight: 800; color: #fff; }
+    .controls-row { display: flex; gap: 6px; align-items: center; }
+    .btn-icon {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      color: var(--gold);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .btn-icon:active { transform: scale(0.94); background: #2f2a3a; }
+    .btn-icon.active { background: #3b3020; border-color: var(--gold); color: #fff; }
+    .station-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 12px;
+      background: #1f1b29;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      z-index: 5;
+    }
+    .station-bar span { display: flex; align-items: center; gap: 4px; }
+    .station-actions { display: flex; gap: 6px; }
+    .queue-btn {
+      background: #2b2538;
+      border: 1px solid var(--gold-dark);
+      color: var(--gold);
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: all 0.15s;
+    }
+    .queue-btn:hover { background: #3e3550; }
+    .queue-btn:active { transform: scale(0.92); }
+    .queue-btn.toggled { background: var(--gold); color: #121016; }
+    #canvas-wrap { flex: 1; position: relative; width: 100%; height: 100%; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .booster-dock {
+      background: rgba(22, 19, 29, 0.98);
+      border-top: 1px solid var(--surface-border);
+      padding: 8px 12px 12px;
+      display: flex;
+      justify-content: space-around;
+      gap: 8px;
+      z-index: 10;
+    }
+    .booster-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 10px;
+      padding: 6px 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      color: var(--text);
+    }
+    .booster-btn:active { transform: scale(0.95); border-color: var(--gold); }
+    .booster-icon { font-size: 1.25rem; margin-bottom: 2px; }
+    .booster-name { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .booster-count { font-size: 0.65rem; color: var(--gold); font-weight: 800; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(10, 8, 15, 0.85);
+      backdrop-filter: blur(4px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .overlay.show { opacity: 1; pointer-events: all; }
+    .card {
+      background: #1f1b29;
+      border: 2px solid var(--gold);
+      border-radius: 16px;
+      padding: 24px 20px;
+      width: 86%;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
+    }
+    .card h2 { font-size: 1.6rem; color: var(--gold); margin-bottom: 8px; font-weight: 800; letter-spacing: 1px; }
+    .card p { font-size: 0.95rem; color: var(--text-dim); margin-bottom: 20px; line-height: 1.4; }
+    .action-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--gold) 0%, #d49a1d 100%);
+      color: #121016;
+      box-shadow: 0 4px 15px rgba(244, 196, 48, 0.3);
+      transition: all 0.15s;
+    }
+    .action-btn:active { transform: scale(0.96); }
+    .action-btn.secondary { background: #2e283b; color: var(--text); box-shadow: none; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div id="game-container">
+  <header>
+    <div class="level-info">
+      <span class="level-title" id="stage-indicator">Campaign • Act 1</span>
+      <span class="level-name" id="level-title-text">Pharaoh's Gate</span>
+    </div>
+    <div class="controls-row">
+      <button class="btn-icon active" id="btn-music" title="Toggle Adaptive Beat">🎵 <span id="music-lbl">On</span></button>
+      <button class="btn-icon" id="btn-sound" title="Toggle Sound">🔊</button>
+      <button class="btn-icon" id="btn-restart" title="Restart Level">↺</button>
+    </div>
+  </header>
+  <div class="station-bar">
+    <span>👑 ROYAL CAROUSEL STATION</span>
+    <div class="station-actions">
+      <button class="queue-btn" id="btn-rotate-queue" title="Rotate queue front passenger to back">↻ Rotate [R]</button>
+      <button class="queue-btn" id="btn-auto-carousel" title="Toggle automated carousel conveyor">🎠 Auto: OFF</button>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div class="booster-dock">
+    <button class="booster-btn" id="btn-shuffle">
+      <span class="booster-icon">🔀</span>
+      <span class="booster-name">Shuffle</span>
+      <span class="booster-count" id="count-shuffle">2 left</span>
+    </button>
+    <button class="booster-btn" id="btn-vip">
+      <span class="booster-icon">✨</span>
+      <span class="booster-name">VIP Pull</span>
+      <span class="booster-count" id="count-vip">1 left</span>
+    </button>
+    <button class="booster-btn" id="btn-slot">
+      <span class="booster-icon">➕</span>
+      <span class="booster-name">+1 Bay</span>
+      <span class="booster-count" id="count-slot">1 left</span>
+    </button>
+  </div>
+  <div class="overlay" id="modal-win">
+    <div class="card">
+      <h2>ROYAL CLEAR!</h2>
+      <p>All passengers have boarded their matching carriages safely. The courtyard is clear!</p>
+      <button class="action-btn" id="btn-next-level">Next Royal Level →</button>
+    </div>
+  </div>
+  <div class="overlay" id="modal-lose">
+    <div class="card">
+      <h2 style="color: #ff4757;">GRIDLOCK!</h2>
+      <p>The holding docks are completely full with no matching passengers at the station gate.</p>
+      <button class="action-btn" id="btn-retry-lose">Try Again ↺</button>
+      <button class="action-btn secondary" id="btn-free-bay">+ Use Extra Bay Booster</button>
+    </div>
+  </div>
+</div>
+<script>
+const PALETTE = {
+  Ruby: { id: 0, name: "Ruby", primary: "#e74c3c", dark: "#962d22", text: "#fff", symbol: "♦" },
+  Sapphire: { id: 1, name: "Sapphire", primary: "#2980b9", dark: "#1a5276", text: "#fff", symbol: "▲" },
+  Emerald: { id: 2, name: "Emerald", primary: "#27ae60", dark: "#196f3d", text: "#fff", symbol: "●" },
+  Topaz: { id: 3, name: "Topaz", primary: "#e67e22", dark: "#a04000", text: "#fff", symbol: "★" },
+  Amethyst: { id: 4, name: "Amethyst", primary: "#8e44ad", dark: "#5b2c6f", text: "#fff", symbol: "☀" },
+  Onyx: { id: 5, name: "Onyx", primary: "#34495e", dark: "#1c2833", text: "#fff", symbol: "❖" }
+};
+const COLOR_KEYS = Object.keys(PALETTE);
+
+class RoyalAudio {
+  constructor() {
+    this.ctx = null;
+    this.soundEnabled = true;
+    this.musicEnabled = true;
+    this.tempo = 76;
+    this.targetTempo = 76;
+    this.stepIndex = 0;
+    this.nextNoteTime = 0;
+    this.isPlayingMusic = false;
+    this.timerID = null;
+    this.bassNotes = [36.71, 38.89, 46.25, 48.99, 55.00, 58.27, 69.30, 73.42];
+  }
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+  playTone(freq, type, duration, gainVal = 0.15) {
+    if (!this.soundEnabled || !this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+      gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + duration);
+    } catch(e) {}
+  }
+  playCarriageMove() { this.playTone(180, 'sine', 0.12, 0.2); }
+  playBump() { this.playTone(85, 'square', 0.1, 0.25); }
+  playBoarding() {
+    if (!this.soundEnabled || !this.ctx) return;
+    [523.25, 659.25, 783.99].forEach((f, i) => setTimeout(() => this.playTone(f, 'triangle', 0.08, 0.12), i * 35));
+  }
+  playDepart() {
+    if (!this.soundEnabled || !this.ctx) return;
+    [440, 554.37, 659.25, 880].forEach((f, i) => setTimeout(() => this.playTone(f, 'sine', 0.18, 0.15), i * 50));
+  }
+  playRotate() { this.playTone(320, 'sine', 0.08, 0.1); }
+  startMusic() {
+    this.init();
+    if (this.isPlayingMusic || !this.musicEnabled) return;
+    this.isPlayingMusic = true;
+    this.nextNoteTime = this.ctx.currentTime + 0.1;
+    this.scheduler();
+  }
+  stopMusic() {
+    this.isPlayingMusic = false;
+    if (this.timerID) clearTimeout(this.timerID);
+  }
+  setDangerLevel(dockFilled, totalDocks, yardRemaining, streak) {
+    let bpm = 76;
+    if (dockFilled >= 3) bpm = 94;
+    if (dockFilled >= 4) bpm = 110;
+    if (dockFilled >= totalDocks - 1) bpm = 128;
+    if (yardRemaining <= 2) bpm = Math.max(bpm, 118);
+    if (streak > 2) bpm += Math.min(streak * 3, 20);
+    this.targetTempo = Math.min(140, Math.max(72, bpm));
+  }
+  scheduler() {
+    if (!this.isPlayingMusic) return;
+    this.tempo += (this.targetTempo - this.tempo) * 0.15;
+    const secondsPer16th = (60.0 / this.tempo) / 4.0;
+    while (this.nextNoteTime < this.ctx.currentTime + 0.12) {
+      this.playStep(this.stepIndex, this.nextNoteTime);
+      this.nextNoteTime += secondsPer16th;
+      this.stepIndex = (this.stepIndex + 1) % 16;
+    }
+    this.timerID = setTimeout(() => this.scheduler(), 25);
+  }
+  playStep(step, time) {
+    if (!this.musicEnabled || !this.ctx) return;
+    const isSpeeding = this.tempo > 105;
+    const isFrantic = this.tempo > 120;
+    if (step % 4 === 0) this.synthDrum(time, 130, 35, 0.15, 0.22);
+    if (step === 4 || step === 12) {
+      this.synthNoise(time, 0.08, 0.1);
+      this.synthDrum(time, 240, 70, 0.09, 0.15);
+    }
+    if (step % 2 === 0 || isFrantic) {
+      this.synthHat(time, step % 4 === 2 ? 0.04 : 0.02, step % 4 === 2 ? 0.08 : 0.04);
+    }
+    if (step === 6 || step === 14) this.synthDrum(time, 320, 120, 0.06, 0.09);
+    if (step % 4 === 0 || step === 6 || step === 10 || (isSpeeding && step === 14)) {
+      let noteIndex = (Math.floor(step / 2) + Math.floor(this.tempo / 10)) % this.bassNotes.length;
+      this.synthBass(time, this.bassNotes[noteIndex], 0.14, 0.13);
+    }
+  }
+  synthDrum(time, startFreq, endFreq, dur, volume) {
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.frequency.setValueAtTime(startFreq, time);
+      osc.frequency.exponentialRampToValueAtTime(endFreq, time + dur);
+      gain.gain.setValueAtTime(volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(time); osc.stop(time + dur);
+    } catch(e) {}
+  }
+  synthHat(time, dur, vol) {
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(8000, time);
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(7000, time);
+      gain.gain.setValueAtTime(vol, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(time); osc.stop(time + dur);
+    } catch(e) {}
+  }
+  synthNoise(time, dur, vol) {
+    try {
+      const bufferSize = this.ctx.sampleRate * dur;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const output = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+      const whiteNoise = this.ctx.createBufferSource();
+      whiteNoise.buffer = buffer;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(vol, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      whiteNoise.connect(gain); gain.connect(this.ctx.destination);
+      whiteNoise.start(time);
+    } catch(e) {}
+  }
+  synthBass(time, freq, dur, vol) {
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, time);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(320 + (this.tempo * 2), time);
+      gain.gain.setValueAtTime(vol, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.15);
+      osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+      osc.start(time); osc.stop(time + 0.16);
+    } catch(e) {}
+  }
+}
+
+const audio = new RoyalAudio();
+
+class Game {
+  constructor() {
+    this.canvas = document.getElementById("gameCanvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.wrap = document.getElementById("canvas-wrap");
+    this.gridCols = 7; this.gridRows = 7;
+    this.carriages = []; this.queue = [];
+    this.dockSlots = 5; this.maxDockSlots = 6; this.dock = [];
+    this.levelIndex = 0; this.autoCarousel = false; this.autoCarouselTimer = 0;
+    this.queueOffset = 0;
+    this.boosters = { shuffle: 2, vip: 1, slot: 1 };
+    this.streak = 0; this.particles = []; this.floatingTexts = [];
+    this.initLayout(); this.bindEvents(); this.loadLevel(0);
+    this.loop = this.loop.bind(this);
+    requestAnimationFrame(this.loop);
+  }
+  initLayout() {
+    const rect = this.wrap.getBoundingClientRect();
+    this.width = rect.width; this.height = rect.height;
+    this.dpr = window.devicePixelRatio || 1;
+    this.canvas.width = this.width * this.dpr;
+    this.canvas.height = this.height * this.dpr;
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.stationH = Math.min(105, this.height * 0.17);
+    this.dockH = Math.min(85, this.height * 0.14);
+    this.yardY = this.stationH + this.dockH + 10;
+    this.yardH = this.height - this.yardY - 8;
+    const pad = 12;
+    this.cellSize = Math.floor(Math.min((this.width - pad * 2) / this.gridCols, (this.yardH - pad * 2) / this.gridRows));
+    this.yardX = Math.floor((this.width - this.cellSize * this.gridCols) / 2);
+  }
+  bindEvents() {
+    window.addEventListener("resize", () => this.initLayout());
+    const triggerUserAudio = () => {
+      audio.init();
+      if (audio.musicEnabled && !audio.isPlayingMusic) audio.startMusic();
+    };
+    window.addEventListener("pointerdown", triggerUserAudio, { once: true });
+    window.addEventListener("keydown", triggerUserAudio, { once: true });
+    this.canvas.addEventListener("pointerdown", (e) => {
+      triggerUserAudio();
+      const rect = this.canvas.getBoundingClientRect();
+      this.handleClick(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    document.getElementById("btn-music").onclick = () => {
+      audio.init();
+      audio.musicEnabled = !audio.musicEnabled;
+      document.getElementById("music-lbl").innerText = audio.musicEnabled ? "On" : "Off";
+      document.getElementById("btn-music").classList.toggle("active", audio.musicEnabled);
+      if (audio.musicEnabled) audio.startMusic(); else audio.stopMusic();
+    };
+    document.getElementById("btn-sound").onclick = (e) => {
+      audio.soundEnabled = !audio.soundEnabled;
+      e.currentTarget.innerText = audio.soundEnabled ? "🔊" : "🔇";
+    };
+    document.getElementById("btn-restart").onclick = () => this.restartLevel();
+    document.getElementById("btn-rotate-queue").onclick = () => this.rotatePassengerQueue();
+    window.addEventListener("keydown", (e) => { if (e.key === "r" || e.key === "R") this.rotatePassengerQueue(); });
+    const autoBtn = document.getElementById("btn-auto-carousel");
+    autoBtn.onclick = () => {
+      this.autoCarousel = !this.autoCarousel;
+      autoBtn.innerText = this.autoCarousel ? "🎠 Auto: ON" : "🎠 Auto: OFF";
+      autoBtn.classList.toggle("toggled", this.autoCarousel);
+    };
+    document.getElementById("btn-shuffle").onclick = () => this.useShuffle();
+    document.getElementById("btn-vip").onclick = () => this.useVipPull();
+    document.getElementById("btn-slot").onclick = () => this.useExtraSlot();
+    document.getElementById("btn-next-level").onclick = () => {
+      document.getElementById("modal-win").classList.remove("show");
+      this.loadLevel(this.levelIndex + 1);
+    };
+    document.getElementById("btn-retry-lose").onclick = () => {
+      document.getElementById("modal-lose").classList.remove("show");
+      this.restartLevel();
+    };
+    document.getElementById("btn-free-bay").onclick = () => {
+      document.getElementById("modal-lose").classList.remove("show");
+      this.useExtraSlot(true);
+    };
+  }
+  getLevelData(idx) {
+    const levels = [
+      {
+        name: "Pharaoh's Gate", stage: "Campaign • Act 1", grid: 6,
+        carriages: [
+          { id: 1, color: "Ruby", length: 2, dir: "UP", r: 1, c: 1, cap: 4 },
+          { id: 2, color: "Sapphire", length: 2, dir: "RIGHT", r: 3, c: 2, cap: 4 },
+          { id: 3, color: "Emerald", length: 3, dir: "DOWN", r: 2, c: 5, cap: 6 },
+          { id: 4, color: "Ruby", length: 2, dir: "LEFT", r: 4, c: 0, cap: 4 },
+          { id: 5, color: "Sapphire", length: 2, dir: "UP", r: 0, c: 4, cap: 4 }
+        ]
+      },
+      {
+        name: "Golden Obelisk", stage: "Campaign • Act 2", grid: 7,
+        carriages: [
+          { id: 1, color: "Topaz", length: 2, dir: "UP", r: 0, c: 2, cap: 4 },
+          { id: 2, color: "Amethyst", length: 2, dir: "RIGHT", r: 1, c: 4, cap: 4 },
+          { id: 3, color: "Ruby", length: 3, dir: "DOWN", r: 2, c: 1, cap: 6 },
+          { id: 4, color: "Topaz", length: 2, dir: "LEFT", r: 3, c: 3, cap: 4 },
+          { id: 5, color: "Sapphire", length: 2, dir: "DOWN", r: 4, c: 5, cap: 4 },
+          { id: 6, color: "Amethyst", length: 2, dir: "RIGHT", r: 5, c: 0, cap: 4 },
+          { id: 7, color: "Ruby", length: 2, dir: "UP", r: 4, c: 3, cap: 4 }
+        ]
+      },
+      {
+        name: "Karnak Avenue", stage: "Campaign • Act 3", grid: 7,
+        carriages: [
+          { id: 1, color: "Emerald", length: 2, dir: "LEFT", r: 0, c: 1, cap: 4 },
+          { id: 2, color: "Sapphire", length: 3, dir: "DOWN", r: 1, c: 3, cap: 6 },
+          { id: 3, color: "Ruby", length: 2, dir: "RIGHT", r: 2, c: 4, cap: 4 },
+          { id: 4, color: "Topaz", length: 2, dir: "UP", r: 3, c: 0, cap: 4 },
+          { id: 5, color: "Emerald", length: 2, dir: "RIGHT", r: 4, c: 1, cap: 4 },
+          { id: 6, color: "Amethyst", length: 3, dir: "LEFT", r: 5, c: 2, cap: 6 },
+          { id: 7, color: "Ruby", length: 2, dir: "UP", r: 2, c: 6, cap: 4 },
+          { id: 8, color: "Topaz", length: 2, dir: "DOWN", r: 4, c: 5, cap: 4 }
+        ]
+      }
+    ];
+    return idx < levels.length ? levels[idx] : this.generateProceduralLevel(idx);
+  }
+  generateProceduralLevel(idx) {
+    const paletteSubset = COLOR_KEYS.slice(0, 3 + (idx % 3));
+    const carriages = [];
+    let count = 6 + Math.min(idx, 6);
+    for (let i = 0; i < count; i++) {
+      const color = paletteSubset[i % paletteSubset.length];
+      const isHoriz = Math.random() > 0.5;
+      const length = Math.random() > 0.65 ? 3 : 2;
+      const dir = isHoriz ? (Math.random() > 0.5 ? "LEFT" : "RIGHT") : (Math.random() > 0.5 ? "UP" : "DOWN");
+      const r = Math.floor(Math.random() * (7 - (isHoriz ? 0 : length)));
+      const c = Math.floor(Math.random() * (7 - (isHoriz ? length : 0)));
+      carriages.push({ id: i + 1, color, length, dir, r, c, cap: length * 2 });
+    }
+    return { name: `Grand Citadel ${idx + 1}`, stage: `Royal Challenge • Tier ${idx + 1}`, grid: 7, carriages };
+  }
+  loadLevel(idx) {
+    this.levelIndex = idx;
+    const lvl = this.getLevelData(idx);
+    document.getElementById("stage-indicator").innerText = lvl.stage;
+    document.getElementById("level-title-text").innerText = lvl.name;
+    this.gridCols = lvl.grid; this.gridRows = lvl.grid;
+    this.initLayout();
+    this.dock = []; this.dockSlots = 5; this.streak = 0;
+    this.carriages = lvl.carriages.map(c => ({ ...c, occupancy: 0 }));
+    const passengerPool = [];
+    this.carriages.forEach(c => { for (let i = 0; i < c.cap; i++) passengerPool.push(c.color); });
+    for (let i = passengerPool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [passengerPool[i], passengerPool[j]] = [passengerPool[j], passengerPool[i]];
+    }
+    this.queue = passengerPool;
+    this.updateBoosterUI();
+    audio.setDangerLevel(this.dock.length, this.dockSlots, this.carriages.length, this.streak);
+  }
+  restartLevel() { this.loadLevel(this.levelIndex); }
+  rotatePassengerQueue() {
+    if (this.queue.length <= 1) return;
+    audio.playRotate();
+    this.queueOffset = -22;
+    this.queue.push(this.queue.shift());
+    this.addFloatingText("Queue Cycled ↻", this.width / 2, this.stationH / 2, "#f4c430");
+    this.checkBoardingProcess();
+  }
+  handleClick(px, py) {
+    if (py < this.stationH) { this.rotatePassengerQueue(); return; }
+    if (px < this.yardX || px > this.yardX + this.cellSize * this.gridCols || py < this.yardY || py > this.yardY + this.cellSize * this.gridRows) return;
+    const c = Math.floor((px - this.yardX) / this.cellSize);
+    const r = Math.floor((py - this.yardY) / this.cellSize);
+    const hit = this.carriages.find(car => (car.dir === "LEFT" || car.dir === "RIGHT") ? (r === car.r && c >= car.c && c < car.c + car.length) : (c === car.c && r >= car.r && r < car.r + car.length));
+    if (hit) this.tryDispatchCarriage(hit);
+  }
+  tryDispatchCarriage(car) {
+    if (this.dock.length >= this.dockSlots) {
+      audio.playBump();
+      this.addFloatingText("Dock Full!", this.width / 2, this.dockH + 20, "#ff4757");
+      return;
+    }
+    if (this.isPathBlocked(car)) {
+      audio.playBump();
+      car.bumpOffset = (car.dir === "UP" || car.dir === "LEFT") ? -8 : 8;
+      setTimeout(() => car.bumpOffset = 0, 100);
+      return;
+    }
+    audio.playCarriageMove();
+    const idx = this.carriages.indexOf(car);
+    if (idx > -1) {
+      this.carriages.splice(idx, 1);
+      this.dock.push(car);
+      this.streak++;
+      this.checkBoardingProcess();
+      audio.setDangerLevel(this.dock.length, this.dockSlots, this.carriages.length, this.streak);
+    }
+  }
+  isPathBlocked(car) {
+    const yard = Array.from({ length: this.gridRows }, () => Array(this.gridCols).fill(null));
+    this.carriages.forEach(c => {
+      for (let i = 0; i < c.length; i++) {
+        const rr = (c.dir === "UP" || c.dir === "DOWN") ? c.r + i : c.r;
+        const cc = (c.dir === "LEFT" || c.dir === "RIGHT") ? c.c + i : c.c;
+        if (rr >= 0 && rr < this.gridRows && cc >= 0 && cc < this.gridCols) yard[rr][cc] = c.id;
+      }
+    });
+    if (car.dir === "UP") { for (let r = car.r - 1; r >= 0; r--) if (yard[r][car.c] !== null && yard[r][car.c] !== car.id) return true; }
+    else if (car.dir === "DOWN") { for (let r = car.r + car.length; r < this.gridRows; r++) if (yard[r][car.c] !== null && yard[r][car.c] !== car.id) return true; }
+    else if (car.dir === "LEFT") { for (let c = car.c - 1; c >= 0; c--) if (yard[car.r][c] !== null && yard[car.r][c] !== car.id) return true; }
+    else if (car.dir === "RIGHT") { for (let c = car.c + car.length; c < this.gridCols; c++) if (yard[car.r][c] !== null && yard[car.r][c] !== car.id) return true; }
+    return false;
+  }
+  checkBoardingProcess() {
+    while (this.queue.length > 0) {
+      const matchCar = this.dock.find(c => c.color === this.queue[0] && c.occupancy < c.cap);
+      if (matchCar) {
+        this.queue.shift();
+        matchCar.occupancy++;
+        audio.playBoarding();
+        this.createSparks(this.width / 2, this.stationH);
+        if (matchCar.occupancy >= matchCar.cap) {
+          audio.playDepart();
+          this.dock.splice(this.dock.indexOf(matchCar), 1);
+          this.addFloatingText("CARRIAGE AWAY! 👑", this.width / 2, this.dockH, "#f4c430");
+        }
+      } else break;
+    }
+    audio.setDangerLevel(this.dock.length, this.dockSlots, this.carriages.length, this.streak);
+    if (this.carriages.length === 0 && this.dock.length === 0 && this.queue.length === 0) {
+      setTimeout(() => document.getElementById("modal-win").classList.add("show"), 350);
+      return;
+    }
+    if (this.dock.length >= this.dockSlots) {
+      const canBoardNext = this.queue.length > 0 && this.dock.some(c => c.color === this.queue[0] && c.occupancy < c.cap);
+      if (!canBoardNext) setTimeout(() => document.getElementById("modal-lose").classList.add("show"), 500);
+    }
+  }
+  useShuffle() {
+    if (this.boosters.shuffle <= 0) return;
+    this.boosters.shuffle--; this.updateBoosterUI();
+    audio.playTone(400, 'triangle', 0.25, 0.2);
+    this.carriages.forEach(c => {
+      const isHoriz = c.dir === "LEFT" || c.dir === "RIGHT";
+      c.dir = isHoriz ? (Math.random() > 0.5 ? "LEFT" : "RIGHT") : (Math.random() > 0.5 ? "UP" : "DOWN");
+    });
+    this.addFloatingText("SHUFFLED! 🔀", this.width / 2, this.yardY + 40, "#f4c430");
+  }
+  useVipPull() {
+    if (this.boosters.vip <= 0 || this.dock.length === 0) return;
+    this.boosters.vip--; this.updateBoosterUI();
+    audio.playTone(600, 'sine', 0.3, 0.25);
+    for (let i = 0; i < this.queue.length; i++) {
+      const matchCar = this.dock.find(c => c.color === this.queue[i] && c.occupancy < c.cap);
+      if (matchCar) {
+        this.queue.splice(i, 1);
+        matchCar.occupancy++;
+        audio.playBoarding();
+        if (matchCar.occupancy >= matchCar.cap) {
+          this.dock.splice(this.dock.indexOf(matchCar), 1);
+          audio.playDepart();
+        }
+        break;
+      }
+    }
+    this.checkBoardingProcess();
+  }
+  useExtraSlot(free = false) {
+    if (!free && this.boosters.slot <= 0) return;
+    if (this.dockSlots >= this.maxDockSlots) return;
+    if (!free) this.boosters.slot--;
+    this.dockSlots++; this.updateBoosterUI();
+    audio.playTone(500, 'square', 0.2, 0.2);
+    this.addFloatingText("+1 DOCK BAY UNLOCKED!", this.width / 2, this.stationH + 30, "#2ecc71");
+  }
+  updateBoosterUI() {
+    document.getElementById("count-shuffle").innerText = `${this.boosters.shuffle} left`;
+    document.getElementById("count-vip").innerText = `${this.boosters.vip} left`;
+    document.getElementById("count-slot").innerText = `${this.boosters.slot} left`;
+  }
+  createSparks(x, y) {
+    for (let i = 0; i < 14; i++) {
+      this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, life: 1.0, color: Math.random() > 0.4 ? "#f4c430" : "#ffffff" });
+    }
+  }
+  addFloatingText(str, x, y, color) { this.floatingTexts.push({ str, x, y, life: 1.0, color }); }
+  loop() {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    if (this.autoCarousel) {
+      this.autoCarouselTimer += 16.6;
+      if (this.autoCarouselTimer > 2800) { this.autoCarouselTimer = 0; this.rotatePassengerQueue(); }
+    }
+    this.queueOffset += (0 - this.queueOffset) * 0.15;
+    this.renderStation(); this.renderDock(); this.renderYard(); this.renderFX();
+    requestAnimationFrame(this.loop);
+  }
+  renderStation() {
+    const ctx = this.ctx;
+    ctx.fillStyle = "#1a1622"; ctx.fillRect(0, 0, this.width, this.stationH);
+    ctx.strokeStyle = "#2f273b"; ctx.lineWidth = 32; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(30, this.stationH * 0.35);
+    ctx.lineTo(this.width - 40, this.stationH * 0.35);
+    ctx.arc(this.width - 40, this.stationH * 0.6, this.stationH * 0.25, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(50, this.stationH * 0.85);
+    ctx.stroke();
+    ctx.fillStyle = "#f4c430"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("BOARDING GATE ▶", 12, this.stationH * 0.88);
+    const visibleCount = Math.min(this.queue.length, 24);
+    for (let i = 0; i < visibleCount; i++) {
+      const pData = PALETTE[this.queue[i]] || PALETTE.Ruby;
+      let linearPos = (i * 28) + this.queueOffset;
+      let px = linearPos < this.width - 80 ? 110 + linearPos : Math.max(30, (this.width - 80) - (linearPos - (this.width - 80)));
+      let py = linearPos < this.width - 80 ? this.stationH * 0.85 : this.stationH * 0.35;
+      ctx.beginPath(); ctx.arc(px, py, 12, 0, Math.PI * 2);
+      ctx.fillStyle = pData.primary; ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = pData.text; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(pData.symbol, px, py);
+    }
+  }
+  renderDock() {
+    const ctx = this.ctx;
+    const startY = this.stationH;
+    ctx.fillStyle = "#15121b"; ctx.fillRect(0, startY, this.width, this.dockH);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(`HOLDING BAYS (${this.dock.length}/${this.dockSlots}) • RHYTHM: ${Math.round(audio.tempo)} BPM`, 14, startY + 12);
+    const slotW = (this.width - 24) / this.maxDockSlots;
+    const slotH = this.dockH - 22;
+    for (let i = 0; i < this.maxDockSlots; i++) {
+      const sx = 12 + i * slotW; const sy = startY + 18;
+      if (i < this.dockSlots) {
+        ctx.fillStyle = "#221d2b";
+        ctx.strokeStyle = i === this.dockSlots - 1 && this.dock.length >= this.dockSlots - 1 ? "#ff4757" : "#383045";
+        ctx.lineWidth = 1.5;
+        this.roundRect(ctx, sx + 2, sy, slotW - 4, slotH, 8, true, true);
+        const car = this.dock[i];
+        if (car) {
+          const pal = PALETTE[car.color] || PALETTE.Ruby;
+          ctx.fillStyle = pal.primary;
+          this.roundRect(ctx, sx + 4, sy + 2, slotW - 8, slotH - 4, 6, true, false);
+          ctx.fillStyle = "#ffffff"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText(`${car.occupancy}/${car.cap}`, sx + slotW / 2, sy + slotH / 2 - 2);
+        }
+      } else {
+        ctx.fillStyle = "#191620"; ctx.strokeStyle = "#272230";
+        this.roundRect(ctx, sx + 2, sy, slotW - 4, slotH, 8, true, true);
+        ctx.fillStyle = "#554b66"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("🔒", sx + slotW / 2, sy + slotH / 2);
+      }
+    }
+  }
+  renderYard() {
+    const ctx = this.ctx;
+    ctx.fillStyle = "#181421";
+    ctx.fillRect(this.yardX - 4, this.yardY - 4, this.cellSize * this.gridCols + 8, this.cellSize * this.gridRows + 8);
+    for (let r = 0; r < this.gridRows; r++) {
+      for (let c = 0; c < this.gridCols; c++) {
+        ctx.fillStyle = (r + c) % 2 === 0 ? "#1e1a28" : "#221d2e";
+        ctx.fillRect(this.yardX + c * this.cellSize, this.yardY + r * this.cellSize, this.cellSize - 1, this.cellSize - 1);
+      }
+    }
+    this.carriages.forEach(car => {
+      const pal = PALETTE[car.color] || PALETTE.Ruby;
+      const isHoriz = car.dir === "LEFT" || car.dir === "RIGHT";
+      let x = this.yardX + car.c * this.cellSize + (isHoriz && car.bumpOffset ? car.bumpOffset : 0);
+      let y = this.yardY + car.r * this.cellSize + (!isHoriz && car.bumpOffset ? car.bumpOffset : 0);
+      const w = isHoriz ? car.length * this.cellSize - 4 : this.cellSize - 4;
+      const h = isHoriz ? this.cellSize - 4 : car.length * this.cellSize - 4;
+      ctx.fillStyle = pal.primary; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+      this.roundRect(ctx, x + 2, y + 2, w, h, 8, true, true);
+      ctx.fillStyle = "#ffffff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const arrow = car.dir === "DOWN" ? "▼" : (car.dir === "LEFT" ? "◀" : (car.dir === "RIGHT" ? "▶" : "▲"));
+      ctx.fillText(arrow, x + 2 + w / 2, y + 2 + h / 2);
+    });
+  }
+  renderFX() {
+    const ctx = this.ctx;
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]; p.x += p.vx; p.y += p.vy; p.life -= 0.03;
+      if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+      ctx.fillStyle = p.color; ctx.globalAlpha = p.life;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i]; ft.y -= 1; ft.life -= 0.02;
+      if (ft.life <= 0) { this.floatingTexts.splice(i, 1); continue; }
+      ctx.globalAlpha = ft.life; ctx.fillStyle = ft.color; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(ft.str, ft.x, ft.y);
+    }
+    ctx.globalAlpha = 1.0;
+  }
+  roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+}
+window.addEventListener("DOMContentLoaded", () => new Game());
+</script>
+</body>
+</html>
