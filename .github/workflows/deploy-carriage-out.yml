@@ -1,0 +1,43 @@
+name: Deploy Pages with Carriage Out Subfolder
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "carriage-out/**"
+      - ".github/workflows/deploy-carriage-out.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify carriage-out/index.html exists
+        run: test -f ./carriage-out/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload root artifact (preserves main site + /carriage-out)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
