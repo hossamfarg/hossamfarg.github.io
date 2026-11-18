@@ -1,0 +1,40 @@
+Instructions to change DB Encryption password as part of CR99_DBPassword_Generation:
+===================================================================================
+
+1. Changes to be made in Pwdchg.bat file shared under "PassWord_Change_Utilty\PwdChg" folder.
+   a)set JAVA_HOME and APPLICATION_DIR to jdk path and PwdChg folder path respectively
+   b)Need to give server machine name where DB is present (Eg: chnmctfinserv4)
+   c)Need to give DB name (Eg: EB11DB02)
+   d)Need to give DB user having write access (Eg: ececuser)
+   e)Need to give New password (Eg: IMDGDF5_wuuk) with minimum password strength.
+     (Refer release notes for exact password strength requirement)
+   
+2. After running the Pwdchg.bat it will ask for old password of the DB. 
+   Need to give the current password of the DB. 
+   Then It will print the Encrypted password for the New password you had entered in Pwdchg.bat file.
+   Make note of the Encrypted password and the New password given in PwdChg.bat file
+   
+
+
+ 
+
+3. After getting Encrypted password, update that in 
+a) 'AppConfig.xml' and 'BankAway.properties' files under data folder for FEBA application.
+b) 'BankAway.properties' under data folder and 'RadienServiceConfig.xml' under data/etc folder for ADMIN application.
+
+
+
+4.New Entries in BankAway.properties of Admin and FEBA
+
+### Parameters used for DB Password Encryption ###
+
+1) Algorithm which is used For Password Encryption
+
+DB_PWD_ENCRYPTION_ALGO=AES  
+
+2) Random key which is used For Password Encryption
+
+DB_PWD_RANDOM_KEY=29304E8758327892   
+
+
+These parameteres are required in BankAway.properties to connect to DB through application.
